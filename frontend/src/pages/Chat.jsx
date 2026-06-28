@@ -1,0 +1,185 @@
+import React, { useState } from 'react';
+import Sidebar from '../components/Sidebar';
+import ChatWindow from '../components/ChatWindow';
+import FloatingActionButton from '../components/FloatingActionButton';
+import NewChatModal from '../components/NewChatModal';
+import { useChat } from '../hooks/useChat';
+import { getInitials } from '../utils/getInitials';
+import { Loader2, X, MessageSquare, Phone, Users, Settings as SettingsIcon } from 'lucide-react';
+
+const Chat = () => {
+  const { 
+    activeRoom, 
+    isReconnecting, 
+    offlineBanner,
+    toast, 
+    setToast, 
+    apiError,
+    selectRoom, 
+    rooms 
+  } = useChat();
+
+  const [mobileTab, setMobileTab] = useState('chats');
+  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
+  const [newChatModalStep, setNewChatModalStep] = useState('private');
+
+  const handleOpenNewChat = (step = 'private') => {
+    setNewChatModalStep(step);
+    setIsNewChatModalOpen(true);
+  };
+
+  const handleFABAction = (actionType) => {
+    if (actionType === 'new_chat') {
+      handleOpenNewChat('private');
+    } else if (actionType === 'new_group') {
+      handleOpenNewChat('group-step1');
+    } else if (actionType === 'quick_conv') {
+      handleOpenNewChat('private');
+    }
+  };
+
+  const handleToastClick = () => {
+    if (toast) {
+      const targetRoom = rooms.find(r => r._id === toast.roomId);
+      if (targetRoom) {
+        selectRoom(targetRoom);
+      }
+      setToast(null);
+    }
+  };
+
+  // Global Keyboard Shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      const activeEl = document.activeElement;
+      const isTyping = activeEl && (
+        activeEl.tagName === 'INPUT' || 
+        activeEl.tagName === 'TEXTAREA' || 
+        activeEl.isContentEditable
+      );
+
+      // Escape key to dismiss overlays
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsNewChatModalOpen(false);
+        window.dispatchEvent(new CustomEvent('dismiss-overlays'));
+        return;
+      }
+
+      // If actively typing, bypass other productivity shortcuts
+      if (isTyping) return;
+
+      // Ctrl + N (New Chat DM)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        handleOpenNewChat('private');
+      }
+
+      // Ctrl + G (New Group Step 1)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        handleOpenNewChat('group-step1');
+      }
+
+      // Ctrl + Shift + S (Cycle Sidebar Tabs)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('cycle-sidebar-tabs'));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const showBanner = isReconnecting || offlineBanner;
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden relative" style={{ backgroundColor: 'var(--bg-base)' }}>
+      
+      {/* Outer Wrapper for responsive layout */}
+      <div className="flex h-full w-full overflow-hidden" style={{ backgroundColor: 'var(--bg-base)' }}>
+        
+        {/* Left Panel: Sidebar */}
+        <div
+          className={`${
+            activeRoom ? 'hidden md:flex' : 'flex'
+          } w-full md:w-[340px] md:shrink-0 h-full border-r flex-col`}
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <Sidebar onNewChat={() => handleOpenNewChat('private')} />
+        </div>
+
+        {/* Right Panel: ChatWindow */}
+        <div
+          className={`${
+            !activeRoom ? 'hidden md:flex' : 'flex'
+          } flex-1 h-full flex-col`}
+          style={{ backgroundColor: 'var(--bg-base)' }}
+        >
+          <ChatWindow />
+        </div>
+
+      </div>
+
+      {/* Floating Action Button (FAB) */}
+      {!activeRoom && <FloatingActionButton onAction={handleFABAction} />}
+
+      {/* Unified New Chat / Group Creation Modal */}
+      <NewChatModal 
+        isOpen={isNewChatModalOpen} 
+        onClose={() => setIsNewChatModalOpen(false)} 
+        initialStep={newChatModalStep} 
+      />
+
+      {/* Bottom Nav Bar (mobile only, hidden on desktop) */}
+      {!activeRoom && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-[#13131F] border-t border-[#E0E0EA] dark:border-[#2A2A45] flex items-center justify-around z-30 animate-in slide-in-from-bottom duration-300">
+          <button 
+            onClick={() => setMobileTab('chats')} 
+            className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
+            style={{ color: mobileTab === 'chats' ? '#FF6A00' : '#9090A8' }}
+          >
+            <MessageSquare className="h-5 w-5" />
+            <span className="text-[10px] font-semibold">Chats</span>
+          </button>
+          <button 
+            onClick={() => {
+              setMobileTab('calls');
+              alert('Voice & Video calls list is coming soon!');
+            }}
+            className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
+            style={{ color: mobileTab === 'calls' ? '#FF6A00' : '#9090A8' }}
+          >
+            <Phone className="h-5 w-5" />
+            <span className="text-[10px] font-semibold">Calls</span>
+          </button>
+          <button 
+            onClick={() => {
+              setMobileTab('people');
+              alert('Search & discover new friends feature is coming soon!');
+            }}
+            className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
+            style={{ color: mobileTab === 'people' ? '#FF6A00' : '#9090A8' }}
+          >
+            <Users className="h-5 w-5" />
+            <span className="text-[10px] font-semibold">People</span>
+          </button>
+          <button 
+            onClick={() => {
+              setMobileTab('settings');
+              alert('Access settings from the top left profile icon!');
+            }}
+            className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
+            style={{ color: mobileTab === 'settings' ? '#FF6A00' : '#9090A8' }}
+          >
+            <SettingsIcon className="h-5 w-5" />
+            <span className="text-[10px] font-semibold">Settings</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Chat;

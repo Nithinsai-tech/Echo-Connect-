@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # 1. Persistent MongoDB Database
+  mongodb:
+    image: mongo:6.0
+    container_name: chat_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - chat_network
+
+  # 2. Redis cluster Pub/Sub broker for Socket.IO horizontal scaling
+  redis:
+    image: redis:7.0-alpine
+    container_name: chat_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - chat_network
+
+  # 3. Chat Backend Instance 1
+  backend-1:
+    build: ./backend
+    container_name: chat_backend_1
+    ports:
+      - "5001:5000"
+    environment:
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/scalable_chat
+      - REDIS_URL=redis://redis:6379
+      - USE_REDIS=true
+      - JWT_SECRET=super_secret_jwt_key_123456_change_me_in_production
+      - CORS_ORIGIN=http://localhost:8080
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - shared_uploads:/usr/src/app/uploads
+    networks:
+      - chat_network
+
+  # 4. Chat Backend Instance 2 (Demonstrating horizontal WebSocket scaling!)
+  backend-2:
+    build: ./backend
+    container_name: chat_backend_2
+    ports:
+      - "5002:5000"
+    environment:
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/scalable_chat
+      - REDIS_URL=redis://redis:6379
+      - USE_REDIS=true
+      - JWT_SECRET=super_secret_jwt_key_123456_change_me_in_production
+      - CORS_ORIGIN=http://localhost:8080
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - shared_uploads:/usr/src/app/uploads
+    networks:
+      - chat_network
+
+  # 5. Compiled Nginx-hosted client frontend
+  frontend:
+    build: ./frontend
+    container_name: chat_frontend
+    ports:
+      - "8080:80"
+    environment:
+      - VITE_API_URL=http://localhost:5001/api # Points to backend-1 (or load balancer)
+      - VITE_SOCKET_URL=http://localhost:5001
+    depends_on:
+      - backend-1
+      - backend-2
+    networks:
+      - chat_network
+
+networks:
+  chat_network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  shared_uploads:
