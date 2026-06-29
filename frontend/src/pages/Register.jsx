@@ -165,14 +165,6 @@ const Register = () => {
       {/* Right Side Form Panel */}
       <div className="auth-right-panel">
         
-        {/* Floating Theme Toggle (Top Right) */}
-        <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
-          <span className="text-xs text-[var(--text-muted)] font-semibold">Theme</span>
-          <div className="bg-[var(--bg-panel)] p-1 rounded-xl border border-[var(--border)] shadow-sm">
-            <ThemeToggle />
-          </div>
-        </div>
-
         {/* Register Glassmorphic Card */}
         <div className="auth-card-new auth-card-glass animate-fade-in" style={{ padding: '32px 40px' }}>
           

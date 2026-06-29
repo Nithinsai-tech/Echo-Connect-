@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2, Shield, Zap, Users, Sparkles } from 'lucide-react';
+import ThemeToggle from './ThemeToggle';
 
 const checklistItems = [
   'Google Authentication',
@@ -60,6 +61,14 @@ export default function AuthLeftPanel() {
         <h2 className="text-3xl font-extrabold text-[var(--text-primary)] leading-tight tracking-tight mb-2">
           Every Message.<br />Every Moment.
         </h2>
+
+        {/* Theme Toggle (Inline below heading) */}
+        <div className="flex items-center gap-3" style={{ marginTop: '28px', marginBottom: '32px' }}>
+          <span className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Theme</span>
+          <div className="bg-[var(--bg-panel)] p-1 rounded-xl border border-[var(--border)] shadow-sm">
+            <ThemeToggle />
+          </div>
+        </div>
         <p className="text-sm text-[var(--text-secondary)] mb-8 max-w-md">
           A premium real-time collaboration workspace designed for instant sharing, absolute security, and elegant communications.
         </p>
