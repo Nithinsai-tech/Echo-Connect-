@@ -267,6 +267,34 @@ export const ChatProvider = ({ children }) => {
   const toastTimeoutRef = useRef(null);
   const offlineTimeoutRef = useRef(null);
   const apiErrorTimeoutRef = useRef(null);
+  const onlineUsersRef = useRef(onlineUsers);
+  const clientTypingTimeoutsRef = useRef({});
+
+  useEffect(() => {
+    onlineUsersRef.current = onlineUsers;
+  }, [onlineUsers]);
+
+  useEffect(() => {
+    setRooms(prev => prev.map(room => {
+      const updatedParticipants = room.participants.map(p => {
+        const isOnline = onlineUsers.has(p._id.toString());
+        if (p.isOnline !== isOnline) {
+          return { ...p, isOnline };
+        }
+        return p;
+      });
+      const changed = updatedParticipants.some((p, i) => p.isOnline !== room.participants[i].isOnline);
+      return changed ? { ...room, participants: updatedParticipants } : room;
+    }));
+
+    setUsers(prev => prev.map(u => {
+      const isOnline = onlineUsers.has(u._id.toString());
+      if (u.isOnline !== isOnline) {
+        return { ...u, isOnline };
+      }
+      return u;
+    }));
+  }, [onlineUsers]);
 
   useEffect(() => {
     activeRoomRef.current = activeRoom;
@@ -275,6 +303,11 @@ export const ChatProvider = ({ children }) => {
   useEffect(() => {
     roomsRef.current = rooms;
   }, [rooms]);
+
+  useEffect(() => {
+    Object.values(clientTypingTimeoutsRef.current).forEach(clearTimeout);
+    clientTypingTimeoutsRef.current = {};
+  }, [activeRoom]);
 
   // Request browser push notification permission on mount
   useEffect(() => {
@@ -320,7 +353,14 @@ export const ChatProvider = ({ children }) => {
     try {
       const response = await getRooms();
       if (response.success) {
-        setRooms(response.data);
+        const updatedRooms = response.data.map(room => {
+          const updatedParticipants = room.participants.map(p => ({
+            ...p,
+            isOnline: onlineUsersRef.current.has(p._id.toString())
+          }));
+          return { ...room, participants: updatedParticipants };
+        });
+        setRooms(updatedRooms);
       }
     } catch (err) {
       console.error('Error fetching rooms:', err.message);
@@ -336,7 +376,11 @@ export const ChatProvider = ({ children }) => {
     try {
       const response = await getAllUsers();
       if (response.success) {
-        setUsers(response.data);
+        const updatedUsers = response.data.map(u => ({
+          ...u,
+          isOnline: onlineUsersRef.current.has(u._id.toString())
+        }));
+        setUsers(updatedUsers);
       }
     } catch (err) {
       console.error('Error fetching user directory:', err.message);
@@ -930,15 +974,24 @@ export const ChatProvider = ({ children }) => {
       }
 
       setRooms(prev => prev.map(room => {
-        if (room._id === roomId && room.lastMessage && room.lastMessage.senderId?._id !== readerId) {
-          const updatedSeenBy = Array.from(new Set([...(room.lastMessage.seenBy || []), readerId]));
+        if (room._id === roomId) {
+          const isCurrentUser = readerId === user?._id;
+          let updatedLastMessage = room.lastMessage;
+          if (room.lastMessage) {
+            const isMsgSentByReader = (room.lastMessage.senderId?._id || room.lastMessage.senderId) === readerId;
+            if (!isMsgSentByReader) {
+              const updatedSeenBy = Array.from(new Set([...(room.lastMessage.seenBy || []), readerId]));
+              updatedLastMessage = {
+                ...room.lastMessage,
+                seenBy: updatedSeenBy,
+                status: 'seen'
+              };
+            }
+          }
           return {
             ...room,
-            lastMessage: {
-              ...room.lastMessage,
-              seenBy: updatedSeenBy,
-              status: 'seen'
-            }
+            unreadCount: isCurrentUser ? 0 : room.unreadCount,
+            lastMessage: updatedLastMessage
           };
         }
         return room;
@@ -956,6 +1009,20 @@ export const ChatProvider = ({ children }) => {
           ...prev,
           [typerId]: name
         }));
+
+        if (clientTypingTimeoutsRef.current[typerId]) {
+          clearTimeout(clientTypingTimeoutsRef.current[typerId]);
+        }
+
+        // Auto-remove typing indicator after 5 seconds of inactivity
+        clientTypingTimeoutsRef.current[typerId] = setTimeout(() => {
+          setTypingUsers(prev => {
+            const updated = { ...prev };
+            delete updated[typerId];
+            return updated;
+          });
+          delete clientTypingTimeoutsRef.current[typerId];
+        }, 5000);
       }
     };
 
@@ -968,12 +1035,22 @@ export const ChatProvider = ({ children }) => {
           delete updated[typerId];
           return updated;
         });
+
+        if (clientTypingTimeoutsRef.current[typerId]) {
+          clearTimeout(clientTypingTimeoutsRef.current[typerId]);
+          delete clientTypingTimeoutsRef.current[typerId];
+        }
       }
     };
 
     // Connection handlers for Reconnection States
     const handleConnect = () => {
       setIsReconnecting(false);
+
+      // Re-emit online status
+      socket.emit('user:online', { userId: user._id });
+      socket.emit('presence:online', { userId: user._id });
+
       const currentActiveRoom = activeRoomRef.current;
       if (currentActiveRoom) {
         fetchMessages(currentActiveRoom._id);
@@ -992,6 +1069,10 @@ export const ChatProvider = ({ children }) => {
       setIsReconnecting(true);
     };
 
+    const handlePresenceInitial = ({ onlineIds }) => {
+      setOnlineUsers(new Set(onlineIds));
+    };
+
     // Bind event hooks
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -999,6 +1080,7 @@ export const ChatProvider = ({ children }) => {
 
     socket.on('message:receive', handleReceiveMessage);
     socket.on('message:new', handleReceiveMessage);
+    socket.on('presence:initial', handlePresenceInitial);
     socket.on('presence:online', handlePresenceOnline);
     socket.on('presence:offline', handlePresenceOffline);
     socket.on('user:online', handlePresenceOnline);
@@ -1015,6 +1097,7 @@ export const ChatProvider = ({ children }) => {
 
       socket.off('message:receive', handleReceiveMessage);
       socket.off('message:new', handleReceiveMessage);
+      socket.off('presence:initial', handlePresenceInitial);
       socket.off('presence:online', handlePresenceOnline);
       socket.off('presence:offline', handlePresenceOffline);
       socket.off('user:online', handlePresenceOnline);

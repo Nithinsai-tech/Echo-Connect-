@@ -1,5 +1,6 @@
 const ChatRoom = require('../models/ChatRoom');
 const User = require('../models/User');
+const Message = require('../models/Message');
 const { isValidObjectId } = require('../utils/validationHelper');
 
 // @desc    Create a private DM or Group room
@@ -82,10 +83,21 @@ const getUserRooms = async (req, res, next) => {
       })
       .sort({ updatedAt: -1 });
 
+    const roomsWithUnread = await Promise.all(rooms.map(async (room) => {
+      const unreadCount = await Message.countDocuments({
+        roomId: room._id,
+        senderId: { $ne: req.user._id },
+        seenBy: { $ne: req.user._id }
+      });
+      const roomObj = room.toObject();
+      roomObj.unreadCount = unreadCount;
+      return roomObj;
+    }));
+
     res.status(200).json({
       success: true,
-      count: rooms.length,
-      data: rooms
+      count: roomsWithUnread.length,
+      data: roomsWithUnread
     });
   } catch (error) {
     next(error);
@@ -111,10 +123,21 @@ const getUserGroups = async (req, res, next) => {
       })
       .sort({ updatedAt: -1 });
 
+    const roomsWithUnread = await Promise.all(rooms.map(async (room) => {
+      const unreadCount = await Message.countDocuments({
+        roomId: room._id,
+        senderId: { $ne: req.user._id },
+        seenBy: { $ne: req.user._id }
+      });
+      const roomObj = room.toObject();
+      roomObj.unreadCount = unreadCount;
+      return roomObj;
+    }));
+
     res.status(200).json({
       success: true,
-      count: rooms.length,
-      data: rooms
+      count: roomsWithUnread.length,
+      data: roomsWithUnread
     });
   } catch (error) {
     next(error);

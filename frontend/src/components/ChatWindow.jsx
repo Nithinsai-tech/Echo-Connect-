@@ -62,8 +62,30 @@ const DoubleCheckBlue = () => (
   </svg>
 );
 
+const escapeRegExp = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const renderHighlightText = (text, highlight) => {
+  if (!highlight || !highlight.trim()) {
+    return text;
+  }
+  const parts = text.split(new RegExp(`(${escapeRegExp(highlight)})`, 'gi'));
+  return (
+    <span>
+      {parts.map((part, i) => 
+        part.toLowerCase() === highlight.toLowerCase() ? (
+          <mark key={i} className="search-text-highlight bg-yellow-300 dark:bg-yellow-500 text-black px-0.5 rounded">{part}</mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  );
+};
+
 // Memoized MessageItem Component for rendering performance
-const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser }) => {
+const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser, searchQuery }) => {
   const [touchStart, setTouchStart] = useState(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
 
@@ -178,7 +200,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       )}
 
       <div
-        className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative border border-transparent ${
+        className={`msg-bubble max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative border border-transparent ${
           isSelf 
             ? 'bg-[var(--bubble-mine)] text-white' 
             : 'bg-[var(--bubble-theirs)] border-[#2C3045] text-[var(--bubble-theirs-text,var(--text-primary))]'
@@ -265,7 +287,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
             This message was deleted
           </p>
         ) : (
-          contentText && <p className="message-content-text leading-relaxed break-words pb-3 pr-12 text-left">{contentText}</p>
+          contentText && <p className="message-content-text leading-relaxed break-words pb-3 pr-12 text-left">{renderHighlightText(contentText, searchQuery)}</p>
         )}
 
         {/* Message Footer: Time + Pinned/Starred + Ticks */}
@@ -650,6 +672,9 @@ const ChatWindow = () => {
       peerConnectionRef.current.close();
     }
 
+    // Clear candidates queue
+    iceCandidatesQueueRef.current = [];
+
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -668,10 +693,11 @@ const ChatWindow = () => {
     };
 
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        }
+      console.log('Received remote track:', event.track.kind);
+      const stream = event.streams[0] || new MediaStream([event.track]);
+      setRemoteStreamState(stream);
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = stream;
       }
     };
 
@@ -687,6 +713,7 @@ const ChatWindow = () => {
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
+      setLocalStreamState(stream);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
@@ -698,6 +725,7 @@ const ChatWindow = () => {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
           localStreamRef.current = stream;
+          setLocalStreamState(stream);
           return stream;
         } catch (innerErr) {
           console.warn('Fallback audio-only also failed:', innerErr);
@@ -724,6 +752,10 @@ const ChatWindow = () => {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+
+    setLocalStreamState(null);
+    setRemoteStreamState(null);
+    iceCandidatesQueueRef.current = [];
 
     setActiveCall(null);
     setIncomingCall(null);
@@ -802,6 +834,17 @@ const ChatWindow = () => {
       }
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // Drain queued candidates
+      while (iceCandidatesQueueRef.current.length > 0) {
+        const cand = iceCandidatesQueueRef.current.shift();
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+        } catch (err) {
+          console.error('Error adding queued ICE candidate:', err);
+        }
+      }
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -868,6 +911,16 @@ const ChatWindow = () => {
         try {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
           setActiveCall(prev => prev ? { ...prev, status: 'connected' } : null);
+
+          // Drain queued candidates
+          while (iceCandidatesQueueRef.current.length > 0) {
+            const cand = iceCandidatesQueueRef.current.shift();
+            try {
+              await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (err) {
+              console.error('Error adding queued ICE candidate:', err);
+            }
+          }
         } catch (e) {
           console.error('Error setting remote answer:', e);
         }
@@ -883,11 +936,16 @@ const ChatWindow = () => {
 
     const handleCallCandidate = async (data) => {
       const { candidate } = data;
-      if (peerConnectionRef.current) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-          console.error('Error adding ICE candidate:', e);
+      const pc = peerConnectionRef.current;
+      if (pc) {
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.error('Error adding ICE candidate:', e);
+          }
+        } else {
+          iceCandidatesQueueRef.current.push(candidate);
         }
       }
     };
@@ -904,6 +962,10 @@ const ChatWindow = () => {
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
       }
+
+      setLocalStreamState(null);
+      setRemoteStreamState(null);
+      iceCandidatesQueueRef.current = [];
 
       setActiveCall(null);
       setIncomingCall(null);
@@ -967,6 +1029,21 @@ const ChatWindow = () => {
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
+  const [localStreamState, setLocalStreamState] = useState(null);
+  const [remoteStreamState, setRemoteStreamState] = useState(null);
+  const iceCandidatesQueueRef = useRef([]);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStreamState) {
+      localVideoRef.current.srcObject = localStreamState;
+    }
+  }, [localStreamState, activeCall?.status, isVideoOff]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStreamState) {
+      remoteVideoRef.current.srcObject = remoteStreamState;
+    }
+  }, [remoteStreamState, activeCall?.status]);
 
   // Virtualization List elements
   const listRef = useRef(null);
@@ -1242,6 +1319,7 @@ const ChatWindow = () => {
           onReaction={sendReaction}
           starredMessages={starredMessages}
           currentUser={user}
+          searchQuery={searchQuery}
         />
       </div>
     );
@@ -1294,8 +1372,8 @@ const ChatWindow = () => {
                 {initials}
               </div>
             )}
-            {!isGroup && partner?.isOnline && (
-              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 bg-[#22C55E]" style={{ borderColor: 'var(--bg-panel)' }} />
+            {!isGroup && (
+              <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 online-status-dot ${partner?.isOnline ? 'online' : ''}`} style={{ borderColor: 'var(--bg-panel)' }} />
             )}
           </div>
 
@@ -1586,6 +1664,7 @@ const ChatWindow = () => {
                     onReaction={sendReaction}
                     starredMessages={starredMessages}
                     currentUser={user}
+                    searchQuery={searchQuery}
                   />
                 </div>
               );

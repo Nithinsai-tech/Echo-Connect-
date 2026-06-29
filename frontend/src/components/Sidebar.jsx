@@ -72,12 +72,10 @@ const RoomItem = memo(({ room, isActive, user, typingUsers, selectRoom, getRoomM
             {getInitials(meta.title)}
           </div>
         )}
-        {meta.isOnline && (
-          <span
-            className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 bg-[#22C55E]"
-            style={{ borderColor: 'var(--bg-panel)' }}
-          />
-        )}
+        <span
+          className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 online-status-dot ${meta.isOnline ? 'online' : ''}`}
+          style={{ borderColor: 'var(--bg-panel)' }}
+        />
       </div>
 
       <div className="flex-1 min-w-0">

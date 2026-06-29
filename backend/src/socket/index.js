@@ -55,6 +55,11 @@ const initSocket = (io) => {
       });
     }
 
+    // Send initial list of online users to the newly connected client
+    socket.emit('presence:initial', {
+      onlineIds: Array.from(onlineUsers.keys())
+    });
+
     // Join rooms user is part of automatically
     try {
       const userRooms = await ChatRoom.find({ participants: socket.user._id });
@@ -95,6 +100,19 @@ const initSocket = (io) => {
         if (!room || !room.participants.includes(userId)) {
           return socket.emit('error_message', { message: 'Not authorized to post to this room' });
         }
+
+        // Ensure all online participants' sockets are joined to this room
+        room.participants.forEach(pId => {
+          const userSocketIds = onlineUsers.get(pId.toString());
+          if (userSocketIds) {
+            userSocketIds.forEach(sid => {
+              const recipientSocket = io.sockets.sockets.get(sid);
+              if (recipientSocket) {
+                recipientSocket.join(roomId);
+              }
+            });
+          }
+        });
 
         // Save message in MongoDB (Default status: sent)
         const message = await Message.create({
