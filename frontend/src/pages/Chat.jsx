@@ -3,6 +3,7 @@ import Sidebar from '../components/Sidebar';
 import ChatWindow from '../components/ChatWindow';
 import FloatingActionButton from '../components/FloatingActionButton';
 import NewChatModal from '../components/NewChatModal';
+import ProfileDrawer from '../components/ProfileDrawer';
 import { useChat } from '../hooks/useChat';
 import { getInitials } from '../utils/getInitials';
 import { Loader2, X, MessageSquare, Phone, Users, Settings as SettingsIcon } from 'lucide-react';
@@ -22,6 +23,7 @@ const Chat = () => {
   const [mobileTab, setMobileTab] = useState('chats');
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [newChatModalStep, setNewChatModalStep] = useState('private');
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const handleOpenNewChat = (step = 'private') => {
     setNewChatModalStep(step);
@@ -62,6 +64,7 @@ const Chat = () => {
       if (e.key === 'Escape') {
         e.preventDefault();
         setIsNewChatModalOpen(false);
+        setIsProfileOpen(false);
         window.dispatchEvent(new CustomEvent('dismiss-overlays'));
         return;
       }
@@ -92,6 +95,12 @@ const Chat = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  React.useEffect(() => {
+    const handleDismiss = () => setIsProfileOpen(false);
+    window.addEventListener('dismiss-overlays', handleDismiss);
+    return () => window.removeEventListener('dismiss-overlays', handleDismiss);
+  }, []);
+
   const showBanner = isReconnecting || offlineBanner;
 
   return (
@@ -107,7 +116,7 @@ const Chat = () => {
           } w-full md:w-[340px] md:shrink-0 h-full border-r flex-col`}
           style={{ borderColor: 'var(--border)' }}
         >
-          <Sidebar onNewChat={() => handleOpenNewChat('private')} />
+          <Sidebar onNewChat={() => handleOpenNewChat('private')} onOpenSettings={() => setIsProfileOpen(true)} />
         </div>
 
         {/* Right Panel: ChatWindow */}
@@ -178,6 +187,12 @@ const Chat = () => {
           </button>
         </div>
       )}
+
+      {/* PROFILE DRAWER */}
+      <ProfileDrawer 
+        isOpen={isProfileOpen} 
+        onClose={() => setIsProfileOpen(false)} 
+      />
     </div>
   );
 };

@@ -13,7 +13,6 @@ import {
   Plus
 } from 'lucide-react';
 import NewChatModal from './NewChatModal';
-import ProfileDrawer from './ProfileDrawer';
 import ThemeToggle from './ThemeToggle';
 
 const getInitialsBg = (name) => {
@@ -119,7 +118,7 @@ const RoomItem = memo(({ room, isActive, user, typingUsers, selectRoom, getRoomM
 
 RoomItem.displayName = 'RoomItem';
 
-const Sidebar = ({ onNewChat }) => {
+const Sidebar = ({ onNewChat, onOpenSettings }) => {
   const { user, logout } = useAuth();
   const {
     rooms,
@@ -131,10 +130,8 @@ const Sidebar = ({ onNewChat }) => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('All');
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   useEffect(() => {
-    const handleDismiss = () => setIsProfileOpen(false);
     const handleCycleTabs = () => {
       const tabs = ['All', 'Unread', 'Groups'];
       setActiveTab(prev => {
@@ -142,10 +139,8 @@ const Sidebar = ({ onNewChat }) => {
         return tabs[nextIdx];
       });
     };
-    window.addEventListener('dismiss-overlays', handleDismiss);
     window.addEventListener('cycle-sidebar-tabs', handleCycleTabs);
     return () => {
-      window.removeEventListener('dismiss-overlays', handleDismiss);
       window.removeEventListener('cycle-sidebar-tabs', handleCycleTabs);
     };
   }, []);
@@ -202,7 +197,7 @@ const Sidebar = ({ onNewChat }) => {
       >
         {/* User avatar */}
         <button
-          onClick={() => setIsProfileOpen(true)}
+          onClick={onOpenSettings}
           className="shrink-0 relative focus:outline-none rounded-full overflow-hidden hover:opacity-85 transition"
           aria-label="Open Profile Settings"
           style={{ width: '36px', height: '36px' }}
@@ -264,7 +259,7 @@ const Sidebar = ({ onNewChat }) => {
           <ThemeToggle />
 
           <button
-            onClick={() => setIsProfileOpen(true)}
+            onClick={onOpenSettings}
             className="p-1.5 rounded-lg transition"
             style={{ color: '#9090A8' }}
             title="Settings"
@@ -438,11 +433,7 @@ const Sidebar = ({ onNewChat }) => {
         )}
       </div>
 
-      {/* PROFILE DRAWER */}
-      <ProfileDrawer
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-      />
+
     </aside>
   );
 };

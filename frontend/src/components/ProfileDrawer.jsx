@@ -163,7 +163,7 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="absolute inset-0 z-45 flex flex-col bg-[#11131C] text-white transition-all duration-300 animate-in slide-in-from-left">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#11131C] text-white transition-all duration-300 animate-in slide-in-from-left">
       
       {/* Header */}
       <header className="flex h-20 shrink-0 items-center bg-[#1A1C28] border-b border-[#2C3045] px-6">
