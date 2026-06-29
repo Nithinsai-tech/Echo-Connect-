@@ -12,7 +12,7 @@ const userSockets = new Map();
 const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+      origin: process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app',
       methods: ['GET', 'POST'],
       credentials: true
     }

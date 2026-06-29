@@ -153,7 +153,7 @@ const Register = () => {
     setGoogleLoading(true);
     const backendUrl = import.meta.env.VITE_API_URL 
       ? import.meta.env.VITE_API_URL.replace(/\/api$/, '') 
-      : 'http://localhost:5000';
+      : 'https://echo-connect-production.up.railway.app';
     window.location.href = `${backendUrl}/api/auth/google`;
   };
 
@@ -397,7 +397,7 @@ const Register = () => {
           <div className="mt-6 text-sm text-[var(--text-secondary)] text-center">
             Already have an account?{' '}
             <Link to="/login" className="font-bold text-[#FF6A00] hover:text-[#FF8A00] transition-colors">
-              Sign in
+              Sign In
             </Link>
           </div>
         </div>

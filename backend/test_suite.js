@@ -1,7 +1,7 @@
 const io = require('socket.io-client');
 
-const baseUrl = 'http://localhost:5000/api';
-const socketUrl = 'http://localhost:5000';
+const baseUrl = 'http://127.0.0.1:5000/api';
+const socketUrl = 'http://127.0.0.1:5000';
 
 const userA = { name: 'Alice', email: 'alice@test.com', password: 'Password123' };
 const userB = { name: 'Bob', email: 'bob@test.com', password: 'Password123' };

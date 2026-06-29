@@ -23,7 +23,7 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app',
     credentials: true
   })
 );

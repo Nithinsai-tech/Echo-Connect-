@@ -18,7 +18,7 @@ const startServer = async () => {
     // 3. Bind Socket.IO engine to the HTTP Server
     const io = new Server(server, {
       cors: {
-        origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+        origin: process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app',
         methods: ['GET', 'POST'],
         credentials: true
       }
@@ -33,7 +33,7 @@ const startServer = async () => {
       console.log(`  WhatsApp-Style Chat Server Booted successfully! `);
       console.log(`  - Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`  - Port: ${PORT}                                 `);
-      console.log(`  - CORS Origin: ${process.env.CORS_ORIGIN || 'http://localhost:5173'}`);
+      console.log(`  - CORS Origin: ${process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app'}`);
       console.log(`==================================================`);
     });
   } catch (error) {

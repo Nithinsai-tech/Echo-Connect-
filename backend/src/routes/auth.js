@@ -19,10 +19,10 @@ router.get('/google', passport.authenticate('google', { scope: ['profile', 'emai
 
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:5173'}/login?error=google_failed` }),
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app'}/login?error=google_failed` }),
   (req, res) => {
     const { accessToken, refreshToken } = req.user._tokens;
-    const frontendUrl = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app';
     res.redirect(`${frontendUrl}/auth/callback?token=${accessToken}&refreshToken=${refreshToken}`);
   }
 );

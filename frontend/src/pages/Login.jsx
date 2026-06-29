@@ -114,7 +114,7 @@ const Login = () => {
     setGoogleLoading(true);
     const backendUrl = import.meta.env.VITE_API_URL 
       ? import.meta.env.VITE_API_URL.replace(/\/api$/, '') 
-      : 'http://localhost:5000';
+      : 'https://echo-connect-production.up.railway.app';
     window.location.href = `${backendUrl}/api/auth/google`;
   };
 
@@ -288,7 +288,7 @@ const Login = () => {
           <div className="mt-6 text-sm text-[var(--text-secondary)] text-center">
             Don't have an account?{' '}
             <Link to="/register" className="font-bold text-[#FF6A00] hover:text-[#FF8A00] transition-colors">
-              Sign up
+              Create Account
             </Link>
           </div>
         </div>
