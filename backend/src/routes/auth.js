@@ -18,12 +18,44 @@ router.post('/logout', protect, logout);
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
 router.get(
-  '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app'}/login?error=google_failed` }),
+  "/google/callback",
+  (req, res, next) => {
+    passport.authenticate(
+      "google",
+      { session: false },
+      (err, user) => {
+        if (err) {
+          console.error("GOOGLE AUTH ERROR:", err);
+          return res.status(500).json({
+            success: false,
+            error: err.message,
+            stack: err.stack,
+          });
+        }
+
+        if (!user) {
+          return res.status(401).json({
+            success: false,
+            error: "No user returned from Google",
+          });
+        }
+
+        req.user = user;
+        next();
+      }
+    )(req, res, next);
+  },
   (req, res) => {
     const { accessToken, refreshToken } = req.user._tokens;
-    const frontendUrl = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'https://echo-connect-8q3n.vercel.app';
-    res.redirect(`${frontendUrl}/auth/callback?token=${accessToken}&refreshToken=${refreshToken}`);
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      process.env.CORS_ORIGIN ||
+      "https://echo-connect-8q3n.vercel.app";
+
+    res.redirect(
+      `${frontendUrl}/auth/callback?token=${accessToken}&refreshToken=${refreshToken}`
+    );
   }
 );
 

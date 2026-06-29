@@ -18,6 +18,7 @@ const userRoutes = require('./routes/users');
 const uploadRoutes = require('./routes/uploads');
 
 const app = express();
+app.set("trust proxy", 1);
 
 // 1. Core Security Middleware
 app.use(helmet());
