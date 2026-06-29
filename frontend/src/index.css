@@ -64,7 +64,7 @@ body {
                BlinkMacSystemFont, sans-serif;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 /* Scrollbar styling */
@@ -1249,8 +1249,6 @@ body {
   width: 100vw;
   background-color: var(--bg-base);
   font-family: 'Inter', sans-serif;
-  overflow-y: auto;
-  overflow-x: hidden;
   padding-top: 40px; /* Space reserved for the top banner */
 }
 
