@@ -23,9 +23,11 @@ import {
 } from 'lucide-react';
 import { updateUserProfile } from '../api';
 import ThemeToggle from './ThemeToggle';
+import { useTheme } from '../context/ThemeContext';
 
 const ProfileDrawer = ({ isOpen, onClose }) => {
   const { user, logout, updateUser } = useAuth();
+  const { isDark } = useTheme();
   const { 
     uploadAttachmentFile,
     users,
@@ -34,6 +36,7 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
     blockedUsers,
     accentColor,
     chatBubbleColor,
+    chatIncomingBubbleColor,
     chatWallpaper,
     chatTextSize,
     highContrast,
@@ -42,6 +45,7 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
     toggleBlockUser,
     updateAccentColor,
     updateChatBubbleColor,
+    updateChatIncomingBubbleColor,
     updateChatWallpaper,
     updateChatTextSize,
     toggleHighContrast
@@ -370,6 +374,39 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
                   {chatBubbleColor === bub.color && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Chat Incoming Bubble Color picker */}
+          <div className="space-y-1 pt-1">
+            <span className="text-xs font-bold text-gray-200 block">Incoming Message Color</span>
+            <span className="text-[9px] text-[#7A8199] block">Customize color for received bubbles</span>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {[
+                { value: 'light-gray', label: 'Light Gray', lightBg: '#EFEFEF', lightText: '#0D0D18', darkBg: '#20253A', darkText: '#FFFFFF' },
+                { value: 'light-blue', label: 'Light Blue', lightBg: '#DBEAFE', lightText: '#1E3A8A', darkBg: '#1E3A8A', darkText: '#FFFFFF' },
+                { value: 'light-green', label: 'Light Green', lightBg: '#D1FAE5', lightText: '#065F46', darkBg: '#065F46', darkText: '#FFFFFF' },
+                { value: 'soft-purple', label: 'Soft Purple', lightBg: '#F3E8FF', lightText: '#5B21B6', darkBg: '#5B21B6', darkText: '#FFFFFF' },
+                { value: 'beige', label: 'Beige', lightBg: '#FDF6E2', lightText: '#78350F', darkBg: '#78350F', darkText: '#FFFFFF' },
+                { value: 'soft-orange', label: 'Soft Orange', lightBg: '#FFEDD5', lightText: '#9A3412', darkBg: '#9A3412', darkText: '#FFFFFF' }
+              ].map(bub => {
+                const isSelected = chatIncomingBubbleColor === bub.value;
+                const bg = isDark ? bub.darkBg : bub.lightBg;
+                const fg = isDark ? bub.darkText : bub.lightText;
+                return (
+                  <button
+                    key={bub.value}
+                    type="button"
+                    onClick={() => updateChatIncomingBubbleColor(bub.value)}
+                    style={{ backgroundColor: bg, color: fg, borderColor: isSelected ? '#FF6A00' : 'rgba(255,255,255,0.08)' }}
+                    className={`h-7 px-3 rounded-full flex items-center justify-center border-2 transition gap-1.5 ${isSelected ? 'scale-105 shadow-md font-bold' : 'hover:scale-102 opacity-90'}`}
+                    title={bub.label}
+                  >
+                    <span className="text-[10px] tracking-tight">{bub.label}</span>
+                    {isSelected && <Check className="h-3 w-3" strokeWidth={3.5} />}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

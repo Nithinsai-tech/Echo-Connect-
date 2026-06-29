@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useCallback, useRef, useMemo
 import { useSocket } from '../hooks/useSocket';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from './ToastContext';
+import { useTheme } from './ThemeContext';
 import {
   getRooms,
   getAllUsers,
@@ -72,12 +73,52 @@ const processMessageTimeline = (rawMessages) => {
   });
 };
 
+const incomingBubbleColorPresets = {
+  'light-gray': {
+    lightBg: '#EFEFEF',
+    lightText: '#0D0D18',
+    darkBg: '#20253A',
+    darkText: '#FFFFFF'
+  },
+  'light-blue': {
+    lightBg: '#DBEAFE',
+    lightText: '#1E3A8A',
+    darkBg: '#1E3A8A',
+    darkText: '#FFFFFF'
+  },
+  'light-green': {
+    lightBg: '#D1FAE5',
+    lightText: '#065F46',
+    darkBg: '#065F46',
+    darkText: '#FFFFFF'
+  },
+  'soft-purple': {
+    lightBg: '#F3E8FF',
+    lightText: '#5B21B6',
+    darkBg: '#5B21B6',
+    darkText: '#FFFFFF'
+  },
+  'beige': {
+    lightBg: '#FDF6E2',
+    lightText: '#78350F',
+    darkBg: '#78350F',
+    darkText: '#FFFFFF'
+  },
+  'soft-orange': {
+    lightBg: '#FFEDD5',
+    lightText: '#9A3412',
+    darkBg: '#9A3412',
+    darkText: '#FFFFFF'
+  }
+};
+
 export const ChatContext = createContext(null);
 
 export const ChatProvider = ({ children }) => {
   const socket = useSocket();
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { isDark } = useTheme();
 
   const [rooms, setRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
@@ -131,6 +172,10 @@ export const ChatProvider = ({ children }) => {
     return localStorage.getItem(`pref_bubble_color_${user?._id}`) || '#16A34A';
   });
 
+  const [chatIncomingBubbleColor, setChatIncomingBubbleColor] = useState(() => {
+    return localStorage.getItem(`pref_incoming_bubble_color_${user?._id}`) || 'light-gray';
+  });
+
   const [chatWallpaper, setChatWallpaper] = useState(() => {
     return localStorage.getItem(`pref_chat_wallpaper_${user?._id}`) || 'default';
   });
@@ -166,6 +211,16 @@ export const ChatProvider = ({ children }) => {
     // Chat Bubble Color
     root.style.setProperty('--bubble-mine', chatBubbleColor);
 
+    // Chat Incoming Bubble Color
+    const incomingPreset = incomingBubbleColorPresets[chatIncomingBubbleColor] || incomingBubbleColorPresets['light-gray'];
+    if (isDark) {
+      root.style.setProperty('--bubble-theirs', incomingPreset.darkBg);
+      root.style.setProperty('--bubble-theirs-text', incomingPreset.darkText);
+    } else {
+      root.style.setProperty('--bubble-theirs', incomingPreset.lightBg);
+      root.style.setProperty('--bubble-theirs-text', incomingPreset.lightText);
+    }
+
     // Chat Wallpaper
     if (chatWallpaper === 'default') {
       root.style.removeProperty('--chat-wallpaper');
@@ -192,7 +247,7 @@ export const ChatProvider = ({ children }) => {
       root.style.removeProperty('--text-secondary');
       root.style.removeProperty('--border');
     }
-  }, [user, accentColor, chatBubbleColor, chatWallpaper, chatTextSize, highContrast]);
+  }, [user, accentColor, chatBubbleColor, chatIncomingBubbleColor, chatWallpaper, chatTextSize, highContrast, isDark]);
 
   const messages = useMemo(() => {
     return processMessageTimeline(rawMessages);
@@ -1019,6 +1074,12 @@ export const ChatProvider = ({ children }) => {
     addToast('Chat bubble color updated', 'success');
   };
 
+  const updateChatIncomingBubbleColor = (color) => {
+    setChatIncomingBubbleColor(color);
+    localStorage.setItem(`pref_incoming_bubble_color_${user?._id}`, color);
+    addToast('Incoming message color updated', 'success');
+  };
+
   const updateChatWallpaper = (wallpaper) => {
     setChatWallpaper(wallpaper);
     localStorage.setItem(`pref_chat_wallpaper_${user?._id}`, wallpaper);
@@ -1086,6 +1147,7 @@ export const ChatProvider = ({ children }) => {
       blockedUsers,
       accentColor,
       chatBubbleColor,
+      chatIncomingBubbleColor,
       chatWallpaper,
       chatTextSize,
       highContrast,
@@ -1094,6 +1156,7 @@ export const ChatProvider = ({ children }) => {
       toggleBlockUser,
       updateAccentColor,
       updateChatBubbleColor,
+      updateChatIncomingBubbleColor,
       updateChatWallpaper,
       updateChatTextSize,
       toggleHighContrast

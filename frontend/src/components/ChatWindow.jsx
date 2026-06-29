@@ -178,10 +178,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       )}
 
       <div
-        className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative text-white border border-transparent ${
+        className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative border border-transparent ${
           isSelf 
-            ? 'bg-[var(--bubble-mine)]' 
-            : 'bg-[var(--bubble-theirs)] border-[#2C3045]'
+            ? 'bg-[var(--bubble-mine)] text-white' 
+            : 'bg-[var(--bubble-theirs)] border-[#2C3045] text-[var(--bubble-theirs-text,var(--text-primary))]'
         } ${isUnreadByMe ? 'message-bubble-incoming-unread' : ''}`}
       >
         {/* Group Sender Name */}
@@ -213,10 +213,14 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 }, 2000);
               }
             }}
-            className="mb-1.5 p-2 rounded bg-black/15 dark:bg-black/35 border-l-4 border-orange-500 text-left text-xs cursor-pointer hover:bg-black/25 transition select-none"
+            className={`mb-1.5 p-2 rounded border-l-4 border-orange-500 text-left text-xs cursor-pointer transition select-none ${
+              isSelf 
+                ? 'bg-black/15 dark:bg-black/35 hover:bg-black/25' 
+                : 'bg-black/5 dark:bg-black/35 hover:bg-black/10'
+            }`}
           >
-            <div className="font-bold text-orange-450 text-[10px]">{replyData.replyToName}</div>
-            <div className="text-gray-300 truncate text-[11px] mt-0.5">{replyData.replyToText}</div>
+            <div className="font-bold text-orange-500 dark:text-orange-400 text-[10px]">{replyData.replyToName}</div>
+            <div className={`truncate text-[11px] mt-0.5 ${isSelf ? 'text-gray-300' : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-90'}`}>{replyData.replyToText}</div>
           </div>
         )}
 
@@ -241,10 +245,14 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
               >
                 <File className="h-5 w-5 shrink-0" />
                 <div className="min-w-0 text-left">
-                  <p className="truncate font-semibold text-gray-200">
+                  <p className={`truncate font-semibold ${
+                    isSelf 
+                      ? 'text-gray-200' 
+                      : 'text-[var(--bubble-theirs-text,var(--text-primary))]'
+                  }`}>
                     {msg.mediaUrl.split('/').pop().split('?')[0] || 'Attachment'}
                   </p>
-                  <p className="text-[10px] text-gray-400">Click to open/download</p>
+                  <p className={`text-[10px] ${isSelf ? 'text-gray-400' : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'}`}>Click to open/download</p>
                 </div>
               </a>
             )}
@@ -261,7 +269,11 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         )}
 
         {/* Message Footer: Time + Pinned/Starred + Ticks */}
-        <div className="absolute bottom-1 right-2 flex items-center gap-1 text-[9px] text-gray-300">
+        <div className={`absolute bottom-1 right-2 flex items-center gap-1 text-[9px] ${
+          isSelf 
+            ? 'text-white/60' 
+            : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
+        }`}>
           {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
           {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
           <span>{formatMessageTime(msg.createdAt)}</span>
@@ -1172,7 +1184,7 @@ const ChatWindow = () => {
 
   if (!activeRoom) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-[var(--bg-base)] text-center p-8">
+      <div className="flex flex-1 flex-col items-center justify-center text-center p-8" style={{ background: 'var(--chat-bg-gradient)' }}>
         <div className="flex flex-col items-center">
           {/* Logo: Orange circle 56px + white speech bubble */}
           <div className="w-14 h-14 rounded-full bg-[#FF6A00] flex items-center justify-center mb-4 shadow-md">
@@ -1502,7 +1514,7 @@ const ChatWindow = () => {
       )}
 
       {/* 2. MESSAGES CONTAINER */}
-      <main ref={containerRef} className="flex-1 overflow-y-auto py-3 relative min-h-0" style={{ background: 'var(--chat-wallpaper, var(--bg-base))' }}>
+      <main ref={containerRef} className="flex-1 overflow-y-auto py-3 relative min-h-0" style={{ background: 'var(--chat-wallpaper, var(--chat-bg-gradient))' }}>
         {loadingMessages && messages.length === 0 ? (
           /* SKELETON LOADER FOR MESSAGES LIST */
           <div className="flex flex-col space-y-4 px-4 py-3 h-full justify-end">
