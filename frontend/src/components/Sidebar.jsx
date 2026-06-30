@@ -185,7 +185,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
 
   return (
     <aside
-      className="w-[340px] border-r flex flex-col h-screen shrink-0"
+      className="w-full md:w-[340px] border-r flex flex-col h-full shrink-0"
       style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)' }}
     >
       {/* TOP BAR */}

@@ -104,16 +104,16 @@ const Chat = () => {
   const showBanner = isReconnecting || offlineBanner;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden relative" style={{ backgroundColor: 'var(--bg-base)' }}>
+    <div className="flex h-[100dvh] w-full overflow-hidden relative" style={{ backgroundColor: 'var(--bg-base)' }}>
       
       {/* Outer Wrapper for responsive layout */}
-      <div className="flex h-full w-full overflow-hidden" style={{ backgroundColor: 'var(--bg-base)' }}>
+      <div className="flex h-full w-full overflow-hidden relative" style={{ backgroundColor: 'var(--bg-base)' }}>
         
         {/* Left Panel: Sidebar */}
         <div
-          className={`${
-            activeRoom ? 'hidden md:flex' : 'flex'
-          } w-full md:w-[340px] md:shrink-0 h-full border-r flex-col`}
+          className={`absolute inset-0 w-full h-full flex flex-col transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:w-[340px] md:shrink-0 md:h-full md:border-r md:z-auto ${
+            activeRoom ? '-translate-x-full z-0' : 'translate-x-0 z-10'
+          }`}
           style={{ borderColor: 'var(--border)' }}
         >
           <Sidebar onNewChat={() => handleOpenNewChat('private')} onOpenSettings={() => setIsProfileOpen(true)} />
@@ -121,9 +121,9 @@ const Chat = () => {
 
         {/* Right Panel: ChatWindow */}
         <div
-          className={`${
-            !activeRoom ? 'hidden md:flex' : 'flex'
-          } flex-1 h-full flex-col`}
+          className={`absolute inset-0 w-full h-full flex flex-col transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:flex-1 md:z-auto ${
+            activeRoom ? 'translate-x-0 z-10' : 'translate-x-full z-0'
+          }`}
           style={{ backgroundColor: 'var(--bg-base)' }}
         >
           <ChatWindow />

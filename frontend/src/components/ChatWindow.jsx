@@ -200,7 +200,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       )}
 
       <div
-        className={`msg-bubble max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative border border-transparent ${
+        className={`msg-bubble max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative border border-transparent ${
           isSelf 
             ? 'bg-[var(--bubble-mine)] text-white' 
             : 'bg-[var(--bubble-theirs)] border-[#2C3045] text-[var(--bubble-theirs-text,var(--text-primary))]'
@@ -1094,11 +1094,19 @@ const ChatWindow = () => {
     const observer = new ResizeObserver((entries) => {
       for (let entry of entries) {
         setContainerHeight(entry.contentRect.height);
+        // Scroll to bottom when container height changes (e.g. keyboard opens)
+        setTimeout(() => {
+          if (messages.length <= 100) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          } else {
+            listRef.current?.scrollToItem(messages.length - 1, 'end');
+          }
+        }, 100);
       }
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [messages]);
 
   // IntersectionObserver to emit seen status receipts
   useEffect(() => {
@@ -1143,14 +1151,55 @@ const ChatWindow = () => {
     e.preventDefault();
     const msg = messages.find(m => m._id === msgId);
     if (!msg) return;
+
+    let x = e.clientX;
+    let y = e.clientY;
+
+    // Handle mobile touch coordinates
+    if (!x && !y && e.nativeEvent) {
+      const touch = e.nativeEvent.touches?.[0] || e.nativeEvent.changedTouches?.[0];
+      if (touch) {
+        x = touch.clientX;
+        y = touch.clientY;
+      }
+    }
+
+    // Fallback coordinates
+    if (!x || !y) {
+      x = window.innerWidth / 2 - 100;
+      y = window.innerHeight / 2 - 100;
+    }
+
+    // Keep menu in viewport bounds
+    const menuWidth = 200;
+    const menuHeight = 280;
+    if (x + menuWidth > window.innerWidth) {
+      x = window.innerWidth - menuWidth - 10;
+    }
+    if (y + menuHeight > window.innerHeight) {
+      y = window.innerHeight - menuHeight - 10;
+    }
+    if (x < 10) x = 10;
+    if (y < 10) y = 10;
+
     setContextMenu({
       visible: true,
-      x: e.clientX,
-      y: e.clientY,
+      x: x,
+      y: y,
       messageId: msgId,
       isSelf: isSelf,
       msg: msg
     });
+  };
+
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      if (messages.length <= 100) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        listRef.current?.scrollToItem(messages.length - 1, 'end');
+      }
+    }, 300);
   };
 
   // Textarea typing start/stop trigger emitters
@@ -1345,11 +1394,11 @@ const ChatWindow = () => {
       `}</style>
 
       {/* 1. HEADER */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b px-5 z-10" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+      <header className="flex h-16 shrink-0 items-center justify-between border-b px-3 md:px-5 z-10" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <div className="flex items-center min-w-0">
           <button
             onClick={() => selectRoom(null)}
-            className="mr-2 rounded-full p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 md:hidden"
+            className="mr-1 md:mr-2 rounded-full p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 md:hidden"
             title="Back to Chats"
             aria-label="Back to conversations list"
           >
@@ -1357,7 +1406,7 @@ const ChatWindow = () => {
           </button>
 
           {/* Room Header Avatar */}
-          <div className="relative mr-3 h-9 w-9 shrink-0">
+          <div className="relative mr-2 md:mr-3 h-9 w-9 shrink-0">
             {roomAvatar ? (
               <img
                 src={roomAvatar}
@@ -1396,7 +1445,7 @@ const ChatWindow = () => {
         </div>
 
         {/* Calling & Option buttons */}
-        <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 relative">
+        <div className="flex items-center gap-1 md:gap-1.5 text-gray-600 dark:text-gray-400 relative">
           <button 
             onClick={startVideoCall}
             className="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition" 
@@ -1535,7 +1584,7 @@ const ChatWindow = () => {
 
       {/* SEARCH BAR OVERLAY */}
       {searchOpen && (
-        <div className="flex items-center justify-between border-b px-5 py-2.5 z-10 gap-3 bg-[#1A1C28]" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center justify-between border-b px-3 md:px-5 py-2 z-10 gap-2 md:gap-3 bg-[#1A1C28]" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Search className="h-4 w-4 text-orange-400" />
             <input
@@ -1851,6 +1900,7 @@ const ChatWindow = () => {
               value={text}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
+              onFocus={handleInputFocus}
               disabled={sending}
               className="w-full resize-none rounded-lg px-3 py-2 text-sm disabled:opacity-75 composer-focus-ring message-content-text"
               style={{ maxHeight: '120px' }}
@@ -2219,10 +2269,10 @@ const ChatWindow = () => {
           </div>
 
           {/* Call Body */}
-          <div className="flex flex-col items-center justify-center flex-1 space-y-6 w-full max-w-sm">
+          <div className="flex flex-col items-center justify-center flex-1 space-y-6 w-full md:max-w-sm h-full">
             {activeCall.type === 'video' && activeCall.status === 'connected' ? (
               // Video Feed
-              <div className="relative w-full aspect-video rounded-xl bg-gray-955 border border-white/10 overflow-hidden shadow-2xl flex items-center justify-center group">
+              <div className="relative w-full h-full flex-1 md:h-auto md:flex-none md:aspect-video rounded-xl bg-gray-955 border border-white/10 overflow-hidden shadow-2xl flex items-center justify-center group">
                 <video
                   ref={remoteVideoRef}
                   autoPlay
