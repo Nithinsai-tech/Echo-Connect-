@@ -1303,7 +1303,7 @@ const ChatWindow = () => {
       <div style={style} className="px-4">
         {showDateSeparator && (
           <div className="flex justify-center my-2 mb-3">
-            <span className="rounded bg-white/80 dark:bg-gray-850/95 px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-300 shadow-sm uppercase tracking-wide">
+            <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/80 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
               {formatMessageDateSeparator(msg.createdAt)}
             </span>
           </div>
@@ -1648,7 +1648,7 @@ const ChatWindow = () => {
                 <div key={msg._id}>
                   {showDateSeparator && (
                     <div className="flex justify-center my-3">
-                      <span className="rounded bg-white/85 dark:bg-gray-850/95 px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-300 shadow-sm uppercase tracking-wide">
+                      <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/85 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
                         {formatMessageDateSeparator(msg.createdAt)}
                       </span>
                     </div>

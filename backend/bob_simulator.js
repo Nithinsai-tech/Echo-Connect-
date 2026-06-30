@@ -1,6 +1,6 @@
 const io = require('socket.io-client');
 
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
 const EMAIL = 'bob@example.com';
 const PASSWORD = 'Password123!';
 const USERNAME = 'Bob';
