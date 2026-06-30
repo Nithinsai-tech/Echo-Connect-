@@ -1,41 +1,114 @@
-# Echo Connect – Production-Grade Scalable Real-Time Chat System
+# Echo Connect – Scalable Real-Time Chat Application
 
-Echo Connect is a full-stack, enterprise-grade, horizontally scalable real-time chat application. It features a stunning glassmorphic React web client and a highly secure, modular Node.js backend containerized for production deployment.
+Echo Connect is a full-stack, responsive real-time chat application. It features a stunning glassmorphic React web client and a secure, modular Node.js backend built with scalability and modern user experience in mind.
+
+---
+
+## 🌐 Live Demo
+
+* **Frontend App**: [https://echo-connect-8q3n.vercel.app/](https://echo-connect-8q3n.vercel.app/)
+* **Backend API**: [https://echo-connect-production.up.railway.app](https://echo-connect-production.up.railway.app)
+* **GitHub Repository**: [https://github.com/Nithinsai-tech/Echo-Connect-](https://github.com/Nithinsai-tech/Echo-Connect-)
 
 ---
 
 ## 🚀 Key Features
 
-* **Real-time Bidirectional WebSockets**: Instantaneous text messages, stickers, media attachments, and read status indicators driven by **Socket.IO**.
-* **Horizontal Socket Scaling**: Integrated with a **Redis Pub/Sub adapter** to sync websocket events across multiple clustered backend nodes seamlessly.
-* **Persistent Chat History**: Core message streams, participant arrays, and conversation logs are indexed and stored in **MongoDB Atlas**.
-* **JWT Session Security**: Secure token rotation using in-memory `accessToken` and cookie-less `refreshToken` storage with Axios authorization interceptors.
-* **Google OAuth 2.0 Integration**: Built-in Google Passport strategy for hassle-free authentication, auto-creating user profiles, and linking with local registration credentials.
-* **Personalization Engine**: Global context-driven client styling allowing real-time adjustment of:
-  * Theme mode (Light / Dark)
-  * Customized Accent Colors (Orange, Blue, Green, Purple, Pink)
-  * Chat Bubble Styles & Background Wallpaper
-  * Chat text sizing (Small, Medium, Large, Extra Large)
-  * High Contrast Mode for accessibility
-* **WebRTC Calling Signaling**: Full peer-to-peer audio and video signaling pipelines built directly into the Socket.IO protocol.
-* **Message Controls**: Enhanced timeline utilities including:
+* **Real-Time Bidirectional WebSockets**: Instantaneous text messages, stickers, media attachments, and read status indicators driven by **Socket.IO**.
+* **Designed for Horizontal Scaling**: Architecture designed to support horizontal Socket.IO scaling using a **Redis Pub/Sub adapter** to sync events across multiple clustered backend nodes.
+* **Persistent Chat History**: Core message streams, participant arrays, and conversation logs are indexed and stored securely in **MongoDB Atlas**.
+* **Secure JWT Session Control**: JWT authentication with refresh token rotation using in-memory `accessToken` and cookie-less `refreshToken` storage with Axios authorization interceptors.
+* **Google OAuth 2.0 Integration**: Built-in Google Passport strategy for hassle-free authentication, auto-creating user profiles, and linking with local credentials.
+* **One-to-One WebRTC Audio & Video Calling**: Complete peer-to-peer audio and video calling with signaling pipelines built directly into the Socket.IO server.
+* **Message Controls**: Timeline utilities including:
   * Message Star/Favorite logs (persisted locally)
   * Direct replies and forwards across rooms
   * Pinned messaging systems
   * Delete For Me (REST endpoint) and Delete For Everyone (real-time socket sync)
   * Sticker & Custom emoji picker
 * **Cloudinary Media Streaming**: Stream-based uploads that bypass intermediate server disk writes, utilizing Multer memory buffers to directly push files to Cloudinary.
-* **Security & Defense**: Built-in security headers via **Helmet**, **CORS** configurations, and IP-based rate limiting on sensitive auth routes to prevent spam.
+* **Security & Defense**: Robust defense implementations including **JWT Authentication**, **Passport Google OAuth**, **Helmet** security headers, **CORS** configurations, **Express Rate Limiting** on auth paths, and secure server-side **Request Validation**.
+* **Personalization Engine**: Global context-driven client styling allowing real-time adjustment of:
+  * Theme mode (Light / Dark)
+  * Customized Accent Colors (Orange, Blue, Green, Purple, Pink)
+  * Chat Bubble Styles & Background Wallpaper
+  * Chat text sizing (Small, Medium, Large, Extra Large)
+  * High Contrast Mode for accessibility
+
+---
+
+## 📊 Features Checklist
+
+| Feature | Status |
+| :--- | :---: |
+| JWT Authentication | ✅ |
+| Google OAuth | ✅ |
+| One-to-One Chat | ✅ |
+| Group Chat | ✅ |
+| Online Presence | ✅ |
+| Typing Indicator | ✅ |
+| Read Receipts | ✅ |
+| Message Reactions | ✅ |
+| Reply Messages | ✅ |
+| Forward Messages | ✅ |
+| Pin Messages | ✅ |
+| Star Messages | ✅ |
+| File Sharing | ✅ |
+| Image Sharing | ✅ |
+| Search Messages | ✅ |
+| Notification Badges | ✅ |
+| One-to-One Video Calling | ✅ |
+| Group Video Calling | ❌ |
+| Mobile Responsive | ✅ |
+| Dark/Light Theme | ✅ |
+
+---
+
+## 📸 Screenshots
+
+<details>
+  <summary>💻 Desktop View</summary>
+  <br/>
+  
+  ### Desktop Chat & Video Calling
+  <table>
+    <tr>
+      <td><b>Desktop Chat Workspace (Dark Theme)</b></td>
+      <td><b>One-to-One Video Calling</b></td>
+    </tr>
+    <tr>
+      <td><img src="docs/screenshots/desktop_chat.png" alt="Desktop Chat" width="400"/></td>
+      <td><img src="artifacts/active_video_call.png" alt="Video Call" width="400"/></td>
+    </tr>
+  </table>
+</details>
+
+<details>
+  <summary>📱 Mobile View</summary>
+  <br/>
+
+  ### Mobile Chat & Sidebar
+  <table>
+    <tr>
+      <td><b>Mobile Conversations Sidebar</b></td>
+      <td><b>Mobile Active Chat Window</b></td>
+    </tr>
+    <tr>
+      <td><img src="docs/screenshots/mobile_sidebar.png" alt="Mobile Sidebar" width="250"/></td>
+      <td><img src="docs/screenshots/mobile_chat.png" alt="Mobile Chat Window" width="250"/></td>
+    </tr>
+  </table>
+</details>
 
 ---
 
 ## 🛠️ Tech Stack & Dependencies
 
-* **Frontend**: React (Vite), TailwindCSS, custom HSL style system, Lucide Icons, Date-fns, React Window (list virtualization for 100+ message logs).
+* **Frontend**: React (Vite), TailwindCSS, custom HSL style system, Lucide Icons, Date-fns, React Window (list virtualization).
 * **Backend**: Node.js, Express.js REST API.
 * **Real-Time Layer**: Socket.IO client & server.
 * **Database & Storage**: MongoDB (Mongoose ODM), Cloudinary.
-* **Orchestration**: Docker, Docker Compose, Redis.
+* **Infrastructure**: Docker, Docker Compose, Redis (designed for scaling).
 
 ---
 
@@ -47,25 +120,25 @@ Echo Connect is a full-stack, enterprise-grade, horizontally scalable real-time 
                                  +--------------------------------+
                                   /       |                      \
                      REST APIs   /        | Theme/Config          \ WebSockets & WebRTC
-                                v         v                        v
-                  +-------------------+ +-------------------+  +------------------+
-                  |  Express Servers  | |  LocalStorage &   |  | Socket.IO nodes  |
-                  +-------------------+ |  Visual State     |  +------------------+
-                  | Passport Google,  | +-------------------+  | presence, DMs,   |
-                  | Rate Limiters     |                        | read receipts    |
-                  +-------------------+                        +------------------+
-                            |                                           |
-                            v                                           v
-                  +-------------------+                        +------------------+
-                  |  MongoDB / Atlas  |                        |  Redis Pub/Sub   |
-                  | (Persistent logs) |                        |  Adapter Sync    |
-                  +-------------------+                        +------------------+
-                            |
-                            v
-                  +-------------------+
-                  |  Cloudinary API   |
-                  | (Media Storage)   |
-                  +-------------------+
+                                 v         v                        v
+                   +-------------------+ +-------------------+  +------------------+
+                   |  Express Servers  | |  LocalStorage &   |  | Socket.IO        |
+                   +-------------------+ |  Visual State     |  | Real-Time Server |
+                   | Passport Google,  | +-------------------+  +------------------+
+                   | Rate Limiters     |                        | presence, DMs,   |
+                   +-------------------+                        | read receipts    |
+                             |                                  +------------------+
+                             v                                           |
+                   +-------------------+                        +------------------+
+                   |  MongoDB / Atlas  |                        |  Redis Pub/Sub   |
+                   | (Persistent logs) |                        |  Adapter Sync    |
+                   +-------------------+                        +------------------+
+                             |
+                             v
+                   +-------------------+
+                   |  Cloudinary API   |
+                   | (Media Storage)   |
+                   +-------------------+
 ```
 
 ---
@@ -128,9 +201,9 @@ npm run dev
 
 ---
 
-### Option B: Docker Compose (Horizontal Cluster Scaling)
+### Option B: Docker Compose (Cluster Scaling Sandbox)
 
-To test event synchronization between multiple nodes:
+To test event synchronization locally using Redis:
 1. Ensure **Docker Desktop** is open and running.
 2. In the repository root directory, run:
    ```bash
@@ -140,6 +213,15 @@ To test event synchronization between multiple nodes:
    * **Frontend Client UI**: `http://localhost:8080`
    * **Backend Node 1 Instance**: `http://localhost:5001`
    * **Backend Node 2 Instance**: `http://localhost:5002`
+
+---
+
+## ☁️ Deployment
+
+* **Frontend Hosting**: Vercel
+* **Backend Hosting**: Railway
+* **Database**: MongoDB Atlas
+* **Media & Storage**: Cloudinary
 
 ---
 
@@ -187,6 +269,7 @@ To test event synchronization between multiple nodes:
 Echo Connect features an automated testing framework (`backend/test_suite.js`) to assert connection logic under load. To run the suite:
 ```bash
 cd backend
+npm install
 node test_suite.js
 ```
 The suite verifies REST APIs, JWT authentication, typing status indicators, message delivery receipts, read receipts, cursor-based pagination, and message deletions.
