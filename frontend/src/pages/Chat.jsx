@@ -143,7 +143,13 @@ const Chat = () => {
 
       {/* Bottom Nav Bar (mobile only, hidden on desktop) */}
       {!activeRoom && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-[#13131F] border-t border-[#E0E0EA] dark:border-[#2A2A45] flex items-center justify-around z-30 animate-in slide-in-from-bottom duration-300">
+        <div 
+          className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#13131F] border-t border-[#E0E0EA] dark:border-[#2A2A45] flex items-center justify-around z-30 animate-in slide-in-from-bottom duration-300"
+          style={{ 
+            paddingBottom: 'env(safe-area-inset-bottom)', 
+            height: 'calc(4rem + env(safe-area-inset-bottom))' 
+          }}
+        >
           <button 
             onClick={() => setMobileTab('chats')} 
             className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"

@@ -1861,7 +1861,12 @@ const ChatWindow = () => {
           </div>
         </footer>
       ) : (
-        <footer className="chat-input-footer flex shrink-0 items-end gap-2 px-3 py-2.5 z-10">
+        <footer 
+          className="chat-input-footer flex shrink-0 items-end gap-2 px-3 py-2.5 z-10"
+          style={{ 
+            paddingBottom: 'calc(10px + env(safe-area-inset-bottom))' 
+          }}
+        >
           <div className="flex items-center gap-1">
             <button
               onClick={() => fileInputRef.current?.click()}
