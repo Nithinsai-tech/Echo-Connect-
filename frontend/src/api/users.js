@@ -19,3 +19,23 @@ export const updateUserProfile = async ({ name, avatar }) => {
   const response = await api.patch('/users/profile', { name, avatar });
   return response.data;
 };
+
+export const sendFriendRequest = async (receiverId) => {
+  const response = await api.post('/contacts/request', { receiverId });
+  return response.data;
+};
+
+export const getFriendRequests = async () => {
+  const response = await api.get('/contacts/requests');
+  return response.data;
+};
+
+export const acceptFriendRequest = async (requestId) => {
+  const response = await api.post('/contacts/accept', { requestId });
+  return response.data;
+};
+
+export const declineFriendRequest = async (requestId) => {
+  const response = await api.post('/contacts/decline', { requestId });
+  return response.data;
+};

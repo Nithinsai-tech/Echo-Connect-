@@ -14,7 +14,11 @@ import {
   uploadAttachment as apiUploadAttachment,
   leaveGroup as apiLeaveGroup,
   addGroupMember as apiAddMember,
-  removeGroupMember as apiRemoveMember
+  removeGroupMember as apiRemoveMember,
+  sendFriendRequest,
+  getFriendRequests,
+  acceptFriendRequest,
+  declineFriendRequest
 } from '../api';
 
 // Helper to resolve reactions, replies, pins and deletes in a single linear pass
@@ -124,6 +128,7 @@ export const ChatProvider = ({ children }) => {
   const [activeRoom, setActiveRoom] = useState(null);
   const [rawMessages, setRawMessages] = useState([]);
   const [users, setUsers] = useState([]);
+  const [friendRequests, setFriendRequests] = useState({ incoming: [], outgoing: [] });
   const [typingUsers, setTypingUsers] = useState({}); // { [userId]: username }
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -388,16 +393,89 @@ export const ChatProvider = ({ children }) => {
     }
   }, [user]);
 
+  // 2.5. Fetch Friend Requests
+  const fetchFriendRequests = useCallback(async () => {
+    if (!user) return;
+    try {
+      const response = await getFriendRequests();
+      if (response.success) {
+        setFriendRequests({
+          incoming: response.incoming || [],
+          outgoing: response.outgoing || []
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching friend requests:', err.message);
+    }
+  }, [user]);
+
+  const sendRequest = async (receiverId) => {
+    try {
+      const response = await sendFriendRequest(receiverId);
+      if (response.success) {
+        setFriendRequests(prev => ({
+          ...prev,
+          outgoing: [response.data, ...prev.outgoing.filter(r => r._id !== response.data._id)]
+        }));
+        addToast('Friend request sent!', 'success');
+        return response;
+      }
+    } catch (err) {
+      console.error('Error sending friend request:', err.message);
+      addToast(err.response?.data?.message || 'Failed to send friend request', 'error');
+      throw err;
+    }
+  };
+
+  const acceptRequest = async (requestId) => {
+    try {
+      const response = await acceptFriendRequest(requestId);
+      if (response.success) {
+        setFriendRequests(prev => ({
+          incoming: prev.incoming.filter(r => r._id !== requestId),
+          outgoing: prev.outgoing.filter(r => r._id !== requestId)
+        }));
+        fetchUsers();
+        addToast('Friend request accepted!', 'success');
+        return response;
+      }
+    } catch (err) {
+      console.error('Error accepting friend request:', err.message);
+      addToast(err.response?.data?.message || 'Failed to accept request', 'error');
+      throw err;
+    }
+  };
+
+  const declineRequest = async (requestId) => {
+    try {
+      const response = await declineFriendRequest(requestId);
+      if (response.success) {
+        setFriendRequests(prev => ({
+          incoming: prev.incoming.filter(r => r._id !== requestId),
+          outgoing: prev.outgoing.filter(r => r._id !== requestId)
+        }));
+        addToast('Friend request declined', 'info');
+        return response;
+      }
+    } catch (err) {
+      console.error('Error declining friend request:', err.message);
+      addToast(err.response?.data?.message || 'Failed to decline request', 'error');
+      throw err;
+    }
+  };
+
   // Load directories when user state changes
   useEffect(() => {
     if (user) {
       fetchRooms();
       fetchUsers();
+      fetchFriendRequests();
     } else {
       setRooms([]);
       setActiveRoom(null);
       setRawMessages([]);
       setUsers([]);
+      setFriendRequests({ incoming: [], outgoing: [] });
       setTypingUsers({});
       setHasMoreMessages(false);
       setNextCursor(null);
@@ -407,7 +485,7 @@ export const ChatProvider = ({ children }) => {
       setToast(null);
       setApiError(null);
     }
-  }, [user, fetchRooms, fetchUsers]);
+  }, [user, fetchRooms, fetchUsers, fetchFriendRequests]);
 
   // 3. Fetch messages for active room
   const fetchMessages = async (roomId, cursor = null) => {
@@ -1073,6 +1151,39 @@ export const ChatProvider = ({ children }) => {
       setOnlineUsers(new Set(onlineIds));
     };
 
+    const handleFriendRequestReceived = (request) => {
+      setFriendRequests(prev => ({
+        ...prev,
+        incoming: [request, ...prev.incoming.filter(r => r._id !== request._id)]
+      }));
+      addToast(`New friend request from ${request.sender.name}!`, 'info');
+    };
+
+    const handleFriendRequestSent = (request) => {
+      setFriendRequests(prev => ({
+        ...prev,
+        outgoing: [request, ...prev.outgoing.filter(r => r._id !== request._id)]
+      }));
+    };
+
+    const handleFriendRequestAccepted = (request) => {
+      setFriendRequests(prev => ({
+        incoming: prev.incoming.filter(r => r._id !== request._id),
+        outgoing: prev.outgoing.filter(r => r._id !== request._id)
+      }));
+      fetchUsers();
+      const isSender = request.sender._id === user._id;
+      const otherUser = isSender ? request.receiver : request.sender;
+      addToast(`You and ${otherUser.name} are now contacts!`, 'success');
+    };
+
+    const handleFriendRequestDeclined = (request) => {
+      setFriendRequests(prev => ({
+        incoming: prev.incoming.filter(r => r._id !== request._id),
+        outgoing: prev.outgoing.filter(r => r._id !== request._id)
+      }));
+    };
+
     // Bind event hooks
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -1090,6 +1201,11 @@ export const ChatProvider = ({ children }) => {
     socket.on('typing:start', handleTypingStart);
     socket.on('typing:stop', handleTypingStop);
 
+    socket.on('friend_request:received', handleFriendRequestReceived);
+    socket.on('friend_request:sent', handleFriendRequestSent);
+    socket.on('friend_request:accepted', handleFriendRequestAccepted);
+    socket.on('friend_request:declined', handleFriendRequestDeclined);
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -1106,6 +1222,11 @@ export const ChatProvider = ({ children }) => {
       socket.off('message:read_receipt', handleReadReceipt);
       socket.off('typing:start', handleTypingStart);
       socket.off('typing:stop', handleTypingStop);
+
+      socket.off('friend_request:received', handleFriendRequestReceived);
+      socket.off('friend_request:sent', handleFriendRequestSent);
+      socket.off('friend_request:accepted', handleFriendRequestAccepted);
+      socket.off('friend_request:declined', handleFriendRequestDeclined);
 
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       if (apiErrorTimeoutRef.current) clearTimeout(apiErrorTimeoutRef.current);
@@ -1223,6 +1344,11 @@ export const ChatProvider = ({ children }) => {
       loadMoreMessages,
       fetchRooms,
       fetchUsers,
+      friendRequests,
+      fetchFriendRequests,
+      sendRequest,
+      acceptRequest,
+      declineRequest,
 
       // Phase 4 Settings & Personalization Exports
       readReceipts,

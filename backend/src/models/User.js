@@ -42,6 +42,12 @@ const UserSchema = new mongoose.Schema(
       type: Date,
       default: Date.now
     },
+    contacts: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
     refreshTokenHash: {
       type: String,
       default: null,

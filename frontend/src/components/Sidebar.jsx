@@ -10,7 +10,9 @@ import {
   MessageSquare,
   Bell,
   Settings,
-  Plus
+  Plus,
+  Users,
+  Check
 } from 'lucide-react';
 import NewChatModal from './NewChatModal';
 import ThemeToggle from './ThemeToggle';
@@ -123,7 +125,11 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
     activeRoom,
     selectRoom,
     typingUsers,
-    loadingRooms
+    loadingRooms,
+    users,
+    friendRequests,
+    acceptRequest,
+    declineRequest
   } = useChat();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -312,11 +318,11 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
 
       {/* TABS */}
       <div className="flex gap-1 mx-3.5 mb-2">
-        {['All', 'Unread', 'Groups'].map(tab => (
+        {['All', 'Unread', 'Groups', 'Requests'].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className="px-4 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition"
             style={{
               backgroundColor: activeTab === tab ? '#FF6A00' : 'transparent',
               color: activeTab === tab ? '#FFFFFF' : 'var(--text-secondary)'
@@ -330,7 +336,12 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
                 e.currentTarget.style.backgroundColor = 'transparent';
             }}
           >
-            {tab}
+            <span>{tab}</span>
+            {tab === 'Requests' && friendRequests?.incoming?.length > 0 && (
+              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shrink-0">
+                {friendRequests.incoming.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -354,7 +365,117 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         className="flex-1 overflow-y-auto"
         style={{ borderTop: '1px solid var(--border)' }}
       >
-        {loadingRooms ? (
+        {activeTab === 'Requests' ? (
+          <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+            {/* Incoming Requests */}
+            {friendRequests?.incoming?.length > 0 && (
+              <div>
+                <div 
+                  className="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b"
+                  style={{ color: '#FF6A00', backgroundColor: 'var(--bg-hover)', borderColor: 'var(--border)' }}
+                >
+                  Incoming Friend Requests ({friendRequests.incoming.length})
+                </div>
+                {friendRequests.incoming.map(req => (
+                  <div key={req._id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-850/20 transition">
+                    <div className="flex items-center min-w-0 mr-2">
+                      <div className="relative mr-3 h-9 w-9 shrink-0">
+                        {req.sender?.avatar ? (
+                          <img src={req.sender.avatar} alt={req.sender.name} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center rounded-full text-xs font-bold uppercase text-white" style={{ backgroundColor: getInitialsBg(req.sender?.name || '') }}>
+                            {getInitials(req.sender?.name || '')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{req.sender?.name}</span>
+                        <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{req.sender?.email}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center shrink-0">
+                      <button
+                        onClick={() => acceptRequest(req._id)}
+                        className="px-2.5 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition mr-1"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => declineRequest(req._id)}
+                        className="px-2.5 py-1.5 rounded-lg bg-red-650 hover:bg-red-700 text-white text-xs font-bold transition"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Outgoing Requests */}
+            {friendRequests?.outgoing?.length > 0 && (
+              <div>
+                <div 
+                  className="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b"
+                  style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-hover)', borderColor: 'var(--border)' }}
+                >
+                  Sent Friend Requests ({friendRequests.outgoing.length})
+                </div>
+                {friendRequests.outgoing.map(req => (
+                  <div key={req._id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-850/20 transition">
+                    <div className="flex items-center min-w-0 mr-2">
+                      <div className="relative mr-3 h-9 w-9 shrink-0">
+                        {req.receiver?.avatar ? (
+                          <img src={req.receiver.avatar} alt={req.receiver.name} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center rounded-full text-xs font-bold uppercase text-white" style={{ backgroundColor: getInitialsBg(req.receiver?.name || '') }}>
+                            {getInitials(req.receiver?.name || '')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{req.receiver?.name}</span>
+                        <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{req.receiver?.email}</span>
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      <span className="px-3 py-1.5 rounded-lg text-gray-500 dark:text-gray-400 text-xs font-semibold select-none" style={{ backgroundColor: 'var(--bg-hover)' }}>
+                        Pending
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Zero State for Requests */}
+            {(!friendRequests?.incoming?.length && !friendRequests?.outgoing?.length) && (
+              <div className="flex flex-col items-center justify-center p-8 py-16 text-center">
+                <div
+                  className="h-16 w-16 rounded-full flex items-center justify-center mb-4"
+                  style={{ backgroundColor: 'var(--orange-bg)', color: '#FF6A00' }}
+                >
+                  <Users size={32} />
+                </div>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  No pending requests
+                </p>
+                <p className="text-xs mt-1 max-w-[200px]" style={{ color: 'var(--text-muted)' }}>
+                  All caught up! Add contacts to start a chat.
+                </p>
+                <button
+                  onClick={onNewChat}
+                  className="mt-4 rounded-xl px-4 py-2 text-xs font-bold text-white transition"
+                  style={{ backgroundColor: '#FF6A00' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FF8C3A'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FF6A00'}
+                >
+                  Find People
+                </button>
+              </div>
+            )}
+          </div>
+        ) : loadingRooms ? (
           <div className="flex flex-col">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="flex items-center px-4 py-4 space-x-3">
@@ -377,35 +498,67 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
           </div>
         ) : filteredRooms.length === 0 ? (
           rooms.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 py-16 text-center">
-              <div
-                className="h-16 w-16 rounded-full flex items-center justify-center mb-4"
-                style={{ backgroundColor: 'var(--orange-bg)', color: '#FF6A00' }}
-              >
-                <MessageSquare size={32} />
+            users.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-8 py-16 text-center">
+                <div
+                  className="h-16 w-16 rounded-full flex items-center justify-center mb-4"
+                  style={{ backgroundColor: 'var(--orange-bg)', color: '#FF6A00' }}
+                >
+                  <Users size={32} />
+                </div>
+                <p
+                  className="text-sm font-semibold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  No contacts yet
+                </p>
+                <p
+                  className="text-xs mt-1 max-w-[200px]"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Connect with friends to start chatting!
+                </p>
+                <button
+                  onClick={onNewChat}
+                  className="mt-4 rounded-xl px-4 py-2 text-xs font-bold text-white transition"
+                  style={{ backgroundColor: '#FF6A00' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FF8C3A'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FF6A00'}
+                >
+                  Add Contact
+                </button>
               </div>
-              <p
-                className="text-sm font-semibold"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                No conversations yet.
-              </p>
-              <p
-                className="text-xs mt-1 max-w-[200px]"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                Start a conversation to show here!
-              </p>
-              <button
-                onClick={onNewChat}
-                className="mt-4 rounded-xl px-4 py-2 text-xs font-bold text-white transition"
-                style={{ backgroundColor: '#FF6A00' }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FF8C3A'}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FF6A00'}
-              >
-                Start a new chat
-              </button>
-            </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-8 py-16 text-center">
+                <div
+                  className="h-16 w-16 rounded-full flex items-center justify-center mb-4"
+                  style={{ backgroundColor: 'var(--orange-bg)', color: '#FF6A00' }}
+                >
+                  <MessageSquare size={32} />
+                </div>
+                <p
+                  className="text-sm font-semibold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  No conversations yet.
+                </p>
+                <p
+                  className="text-xs mt-1 max-w-[200px]"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Start a conversation to show here!
+                </p>
+                <button
+                  onClick={onNewChat}
+                  className="mt-4 rounded-xl px-4 py-2 text-xs font-bold text-white transition"
+                  style={{ backgroundColor: '#FF6A00' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FF8C3A'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FF6A00'}
+                >
+                  Start a new chat
+                </button>
+              </div>
+            )
           ) : (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <p

@@ -23,6 +23,7 @@ const startServer = async () => {
         credentials: true
       }
     });
+    app.set('io', io);
 
     // 4. Attach real-time connection listeners
     initSocket(io);

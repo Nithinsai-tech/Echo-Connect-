@@ -16,6 +16,7 @@ const messageRoutes = require('./routes/messages');
 const messageSpecificRoutes = require('./routes/messageSpecific');
 const userRoutes = require('./routes/users');
 const uploadRoutes = require('./routes/uploads');
+const contactRoutes = require('./routes/contacts');
 
 const app = express();
 app.set("trust proxy", 1);
@@ -54,6 +55,7 @@ app.use('/api/rooms/:roomId/messages', messageRoutes); // Nested message histori
 app.use('/api/messages', messageSpecificRoutes); // Individual message operations (delete)
 app.use('/api/users', userRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/contacts', contactRoutes);
 
 // Base Health Check endpoint
 app.get('/health', (req, res) => {

@@ -1,26 +1,33 @@
 const User = require('../models/User');
+const FriendRequest = require('../models/FriendRequest');
 const { getOnlineUserIds } = require('../services/presence');
 
-// @desc    Get all registered users (excluding current user)
+// @desc    Get all contacts (accepted friends) of the current user
 // @route   GET /api/users
 // @access  Private
 const getAllUsers = async (req, res, next) => {
   try {
-    const users = await User.find({ _id: { $ne: req.user._id } })
-      .select('name email avatar lastSeen')
-      .sort({ name: 1 });
+    const currentUser = await User.findById(req.user._id).populate({
+      path: 'contacts',
+      select: 'name email avatar lastSeen',
+      options: { sort: { name: 1 } }
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
     res.status(200).json({
       success: true,
-      count: users.length,
-      data: users
+      count: currentUser.contacts.length,
+      data: currentUser.contacts
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Search users by name or email
+// @desc    Search all users by name or email, returning relationship status with current user
 // @route   GET /api/users/search
 // @access  Private
 const searchUsers = async (req, res, next) => {
@@ -42,10 +49,46 @@ const searchUsers = async (req, res, next) => {
       .select('name email avatar lastSeen')
       .limit(15);
 
+    const userIds = users.map(u => u._id);
+
+    // Find any requests between current user and these matching users
+    const requests = await FriendRequest.find({
+      $or: [
+        { sender: req.user._id, receiver: { $in: userIds } },
+        { sender: { $in: userIds }, receiver: req.user._id }
+      ]
+    });
+
+    const currentUser = await User.findById(req.user._id).select('contacts');
+    const contactsSet = new Set((currentUser.contacts || []).map(c => c.toString()));
+
+    const data = users.map(u => {
+      const uJson = u.toJSON();
+      const isContact = contactsSet.has(u._id.toString());
+
+      if (isContact) {
+        uJson.relationship = 'contact';
+      } else {
+        const reqBetween = requests.find(r => 
+          (r.sender.toString() === req.user._id.toString() && r.receiver.toString() === u._id.toString()) ||
+          (r.sender.toString() === u._id.toString() && r.receiver.toString() === req.user._id.toString())
+        );
+
+        if (reqBetween) {
+          uJson.relationship = reqBetween.status; // 'pending' or 'declined'
+          uJson.requestSender = reqBetween.sender.toString();
+          uJson.requestId = reqBetween._id;
+        } else {
+          uJson.relationship = 'none';
+        }
+      }
+      return uJson;
+    });
+
     res.status(200).json({
       success: true,
-      count: users.length,
-      data: users
+      count: data.length,
+      data
     });
   } catch (error) {
     next(error);
