@@ -286,7 +286,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       )}
 
       <div
-        className={`msg-bubble max-w-[85%] md:max-w-[70%] px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 ${bubbleCornersClass} ${
+        className={`msg-bubble max-w-[74%] md:max-w-[60%] lg:max-w-[520px] px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 ${bubbleCornersClass} ${
           isImageOnly ? 'p-1.5' : ''
         } ${
           isSelf 
@@ -340,10 +340,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 }, 2000);
               }
             }}
-            className={`mb-1.5 p-2 rounded border-l-4 border-orange-500 text-left text-xs cursor-pointer transition select-none ${
+            className={`mb-1.5 p-2 rounded border-l-4 border-orange-500 text-left text-xs cursor-pointer transition select-none max-w-[280px] md:max-w-[340px] w-full ${
               isSelf 
-                ? 'bg-black/15 dark:bg-black/35 hover:bg-black/25' 
-                : 'bg-black/5 dark:bg-black/35 hover:bg-black/10'
+                ? 'bg-black/20 dark:bg-black/40 hover:bg-black/30' 
+                : 'bg-black/8 dark:bg-black/45 hover:bg-black/15'
             }`}
           >
             <div className="font-bold text-orange-500 dark:text-orange-400 text-[10px]">{replyData.replyToName}</div>
@@ -1467,7 +1467,7 @@ const ChatWindow = () => {
     const isConsecutive = prevMsg && !showDateSeparator && prevMsg.senderId?._id === msg.senderId?._id;
 
     return (
-      <div style={style} className="px-4">
+      <div style={style} className="px-4 md:px-5">
         {showDateSeparator && (
           <div className="flex justify-center my-2 mb-3">
             <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/80 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
@@ -1760,104 +1760,105 @@ const ChatWindow = () => {
         </div>
       )}
 
-      {/* 2. MESSAGES CONTAINER */}
       <main ref={containerRef} className="flex-1 overflow-y-auto py-3 relative min-h-0" style={{ background: 'var(--chat-wallpaper, var(--chat-bg-gradient))' }}>
-        {loadingMessages && messages.length === 0 ? (
-          /* SKELETON LOADER FOR MESSAGES LIST */
-          <div className="flex flex-col space-y-4 px-4 py-3 h-full justify-end">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className={`flex w-full ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
-                <div className={`h-12 w-1/3 rounded-lg skeleton-shimmer ${i % 2 === 0 ? 'rounded-tr-none' : 'rounded-tl-none'}`} />
-              </div>
-            ))}
-          </div>
-        ) : messages.length === 0 ? (
-          /* EMPTY STATE inside room: "Say hello!" */
-          <div className="flex flex-1 flex-col items-center justify-center p-8 py-24 text-center h-full">
-            <span className="text-4xl mb-3 block">👋</span>
-            <h3 className="text-base font-bold text-gray-700 dark:text-gray-200">Say hello!</h3>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Send a message to start this conversation.</p>
-          </div>
-        ) : messages.length > 100 ? (
-          /* VIRTUALIZED SCROLL LIST FOR 100+ MESSAGES */
-          <List
-            ref={listRef}
-            height={containerHeight}
-            itemCount={messages.length}
-            itemSize={getItemSize}
-            width="100%"
-          >
-            {VirtualizedRow}
-          </List>
-        ) : (
-          /* STANDARD SCROLL AREA FOR SMALLER MESSAGES LISTS */
-          <div className="px-4">
-            {/* Pagination Load Button */}
-            {hasMoreMessages && (
-              <div className="flex justify-center pb-3">
-                <button
-                  onClick={loadMoreMessages}
-                  disabled={loadingMessages}
-                  className="rounded-full bg-white dark:bg-gray-800 px-4 py-1.5 text-xs font-semibold text-[#075E54] dark:text-[#075e54] shadow hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition"
-                  aria-label="Load older messages"
-                >
-                  {loadingMessages ? 'Loading older...' : 'Load older messages'}
-                </button>
-              </div>
-            )}
-
-            {messages.map((msg, index) => {
-              const isSelf = msg.senderId?._id === user?._id;
-              const isUnreadByMe = !isSelf && !msg.seenBy?.includes(user?._id);
-              
-              const prevMsg = index > 0 ? messages[index - 1] : null;
-              const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-              const isConsecutive = prevMsg && !showDateSeparator && prevMsg.senderId?._id === msg.senderId?._id;
-
-              return (
-                <div key={msg._id}>
-                  {showDateSeparator && (
-                    <div className="flex justify-center my-3">
-                      <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/85 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
-                        {formatMessageDateSeparator(msg.createdAt)}
-                      </span>
-                    </div>
-                  )}
-                  <MessageItem
-                    msg={msg}
-                    isSelf={isSelf}
-                    isGroup={isGroup}
-                    isUnreadByMe={isUnreadByMe}
-                    onContextMenu={handleContextMenu}
-                    onImageClick={setActiveImage}
-                    onReplySwipe={setReplyingToMessage}
-                    onReaction={sendReaction}
-                    starredMessages={starredMessages}
-                    currentUser={user}
-                    searchQuery={searchQuery}
-                    isConsecutive={isConsecutive}
-                    isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
-                  />
+        <div className="max-w-[960px] mx-auto w-full h-full flex flex-col relative">
+          {loadingMessages && messages.length === 0 ? (
+            /* SKELETON LOADER FOR MESSAGES LIST */
+            <div className="flex flex-col space-y-4 px-4 py-3 h-full justify-end w-full">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className={`flex w-full ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`h-12 w-1/3 rounded-lg skeleton-shimmer ${i % 2 === 0 ? 'rounded-tr-none' : 'rounded-tl-none'}`} />
                 </div>
-              );
-            })}
-            
-            <div ref={messagesEndRef} />
-          </div>
-        )}
+              ))}
+            </div>
+          ) : messages.length === 0 ? (
+            /* EMPTY STATE inside room: "Say hello!" */
+            <div className="flex flex-1 flex-col items-center justify-center p-8 py-24 text-center h-full w-full">
+              <span className="text-4xl mb-3 block">👋</span>
+              <h3 className="text-base font-bold text-gray-700 dark:text-gray-200">Say hello!</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Send a message to start this conversation.</p>
+            </div>
+          ) : messages.length > 100 ? (
+            /* VIRTUALIZED SCROLL LIST FOR 100+ MESSAGES */
+            <List
+              ref={listRef}
+              height={containerHeight}
+              itemCount={messages.length}
+              itemSize={getItemSize}
+              width="100%"
+            >
+              {VirtualizedRow}
+            </List>
+          ) : (
+            /* STANDARD SCROLL AREA FOR SMALLER MESSAGES LISTS */
+            <div className="px-4 md:px-5 w-full flex-1">
+              {/* Pagination Load Button */}
+              {hasMoreMessages && (
+                <div className="flex justify-center pb-3">
+                  <button
+                    onClick={loadMoreMessages}
+                    disabled={loadingMessages}
+                    className="rounded-full bg-white dark:bg-gray-800 px-4 py-1.5 text-xs font-semibold text-[#075E54] dark:text-[#075e54] shadow hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition"
+                    aria-label="Load older messages"
+                  >
+                    {loadingMessages ? 'Loading older...' : 'Load older messages'}
+                  </button>
+                </div>
+              )}
 
-        {/* Bouncing Typing indicator */}
-        {Object.keys(typingUsers).filter(uid => uid !== user?._id).length > 0 && (
-          <div className="absolute bottom-2 left-4 z-10 flex justify-start">
-            <div className="rounded-lg rounded-tl-none bg-white dark:bg-gray-700 px-3.5 py-2.5 shadow-md">
-              <div className="flex items-center space-x-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0s' }} />
-                <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.15s' }} />
-                <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.3s' }} />
+              {messages.map((msg, index) => {
+                const isSelf = msg.senderId?._id === user?._id;
+                const isUnreadByMe = !isSelf && !msg.seenBy?.includes(user?._id);
+                
+                const prevMsg = index > 0 ? messages[index - 1] : null;
+                const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+                const isConsecutive = prevMsg && !showDateSeparator && prevMsg.senderId?._id === msg.senderId?._id;
+
+                return (
+                  <div key={msg._id}>
+                    {showDateSeparator && (
+                      <div className="flex justify-center my-3">
+                        <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/85 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
+                          {formatMessageDateSeparator(msg.createdAt)}
+                        </span>
+                      </div>
+                    )}
+                    <MessageItem
+                      msg={msg}
+                      isSelf={isSelf}
+                      isGroup={isGroup}
+                      isUnreadByMe={isUnreadByMe}
+                      onContextMenu={handleContextMenu}
+                      onImageClick={setActiveImage}
+                      onReplySwipe={setReplyingToMessage}
+                      onReaction={sendReaction}
+                      starredMessages={starredMessages}
+                      currentUser={user}
+                      searchQuery={searchQuery}
+                      isConsecutive={isConsecutive}
+                      isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
+                    />
+                  </div>
+                );
+              })}
+              
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+
+          {/* Bouncing Typing indicator */}
+          {Object.keys(typingUsers).filter(uid => uid !== user?._id).length > 0 && (
+            <div className="absolute bottom-2 left-4 z-10 flex justify-start">
+              <div className="rounded-lg rounded-tl-none bg-white dark:bg-gray-700 px-3.5 py-2.5 shadow-md">
+                <div className="flex items-center space-x-1.5">
+                  <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0s' }} />
+                  <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.15s' }} />
+                  <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.3s' }} />
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
 
       {/* 3. ATTACHMENT FLOATING LOADER */}
