@@ -1,7 +1,7 @@
 import React, { createContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../hooks/useAuth';
-import { getAccessToken } from '../api';
+import { getAccessToken, refresh } from '../api';
 
 export const SocketContext = createContext(null);
 
@@ -13,7 +13,7 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     // Only connect socket if user is logged in and authenticated
-    if (!user) {
+    if (!user?._id) {
       if (socket) {
         socket.disconnect();
         setSocket(null);
@@ -31,16 +31,46 @@ export const SocketProvider = ({ children }) => {
     const newSocket = io(SOCKET_URL, {
       auth: { token },
       autoConnect: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
+      timeout: 20000
     });
 
     newSocket.on('connect', () => {
       console.log('Socket.IO successfully connected to backend!');
     });
 
-    newSocket.on('connect_error', (error) => {
+    // Update token dynamically on reconnection attempts
+    newSocket.on('reconnect_attempt', () => {
+      const currentToken = getAccessToken();
+      if (currentToken) {
+        newSocket.auth.token = currentToken;
+      }
+    });
+
+    newSocket.on('connect_error', async (error) => {
       console.error('Socket.IO connection error:', error.message);
+      
+      // If auth failed, attempt a refresh
+      if (error.message && (error.message.includes('Authentication') || error.message.includes('token'))) {
+        console.log('Socket authentication failed. Attempting to refresh token...');
+        try {
+          const refreshToken = localStorage.getItem('refreshToken');
+          if (refreshToken) {
+            const response = await refresh(refreshToken);
+            if (response.success && response.data?.tokens) {
+              const newAccessToken = response.data.tokens.accessToken;
+              newSocket.auth.token = newAccessToken;
+              newSocket.connect();
+            }
+          }
+        } catch (refreshErr) {
+          console.error('Socket token refresh failed:', refreshErr);
+        }
+      }
     });
 
     setSocket(newSocket);
@@ -49,7 +79,7 @@ export const SocketProvider = ({ children }) => {
     return () => {
       newSocket.disconnect();
     };
-  }, [user]);
+  }, [user?._id]);
 
   return (
     <SocketContext.Provider value={socket}>

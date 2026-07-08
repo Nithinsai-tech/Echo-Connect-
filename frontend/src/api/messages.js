@@ -1,7 +1,11 @@
 import api from './api';
 
-export const getRoomMessages = async (roomId, params = {}) => {
-  const response = await api.get(`/rooms/${roomId}/messages`, { params });
+export const getRoomMessages = async (roomId, params = {}, signal = null) => {
+  const config = { params };
+  if (signal) {
+    config.signal = signal;
+  }
+  const response = await api.get(`/rooms/${roomId}/messages`, config);
   return response.data;
 };
 

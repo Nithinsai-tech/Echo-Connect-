@@ -61,45 +61,56 @@ const initSocket = (io) => {
     });
 
     // Join rooms user is part of automatically
-    try {
-      const userRooms = await ChatRoom.find({ participants: socket.user._id });
-      userRooms.forEach((room) => {
-        socket.join(room._id.toString());
+    ChatRoom.find({ participants: socket.user._id })
+      .then((userRooms) => {
+        userRooms.forEach((room) => {
+          socket.join(room._id.toString());
+        });
+      })
+      .catch((err) => {
+        console.log('Socket automatic room join error:', err.message);
       });
-    } catch (err) {
-      console.error('Socket automatic room join error:', err.message);
-    }
 
     // A. Event: Join Room manually
-    socket.on('room:join', ({ roomId }) => {
+    socket.on('room:join', ({ roomId }, ack) => {
       if (roomId) {
         socket.join(roomId);
         console.log(`Socket client ${socket.id} joined room ${roomId}`);
+        if (typeof ack === 'function') ack({ success: true });
+      } else {
+        if (typeof ack === 'function') ack({ success: false, error: 'Room ID is required' });
       }
     });
 
     // B. Event: Leave Room manually
-    socket.on('room:leave', ({ roomId }) => {
+    socket.on('room:leave', ({ roomId }, ack) => {
       if (roomId) {
         socket.leave(roomId);
         console.log(`Socket client ${socket.id} left room ${roomId}`);
+        if (typeof ack === 'function') ack({ success: true });
+      } else {
+        if (typeof ack === 'function') ack({ success: false, error: 'Room ID is required' });
       }
     });
 
     // C. Event: Send Message
     socket.on('message:send', async (data, ackCallback) => {
+      const tStart = Date.now();
       const { roomId, content, type, mediaUrl } = data;
+      const mongoose = require('mongoose');
 
       try {
         if (!roomId) {
           return socket.emit('error_message', { message: 'Room ID is required' });
         }
 
-        // Verify participant authorization
+        // 1. Verify participant authorization
+        const tAuthStart = Date.now();
         const room = await ChatRoom.findById(roomId);
-        if (!room || !room.participants.includes(userId)) {
+        if (!room || !room.participants.map(p => p.toString()).includes(userId)) {
           return socket.emit('error_message', { message: 'Not authorized to post to this room' });
         }
+        const tAuth = Date.now() - tAuthStart;
 
         // Ensure all online participants' sockets are joined to this room
         room.participants.forEach(pId => {
@@ -114,54 +125,111 @@ const initSocket = (io) => {
           }
         });
 
-        // Save message in MongoDB (Default status: sent)
-        const message = await Message.create({
-          roomId,
-          senderId: userId,
-          content: content || '',
-          type: type || 'text',
-          mediaUrl: mediaUrl || '',
-          status: 'sent',
-          seenBy: [userId]
-        });
-
-        // Update lastMessage pointer in Room
-        await ChatRoom.findByIdAndUpdate(roomId, { lastMessage: message._id });
-
-        // Populate sender info for the relay
-        const populatedMessage = await Message.findById(message._id)
-          .populate('senderId', 'name email avatar');
-
-        // Execute acknowledgement callback for sender (single tick ACK)
-        if (typeof ackCallback === 'function') {
-          ackCallback({ success: true, message: populatedMessage });
-        } else {
-          socket.emit('message:ack', { success: true, message: populatedMessage });
-        }
-
-        // Relay message to the room channel
-        socket.to(roomId).emit('message:receive', populatedMessage);
-
         // Check if other participants are online to update status to "delivered"
         const otherParticipants = room.participants.filter(p => p.toString() !== userId);
         let hasAnyOnlineRecipient = false;
-        
         otherParticipants.forEach(pId => {
           if (onlineUsers.has(pId.toString())) {
             hasAnyOnlineRecipient = true;
           }
         });
 
-        // If at least one recipient is online, mark message as delivered
+        // 2. Generate Message ID and DB Write in Parallel with error recovery
+        const messageId = new mongoose.Types.ObjectId();
+        const initialStatus = hasAnyOnlineRecipient ? 'delivered' : 'sent';
+
+        const tDbStart = Date.now();
+        
+        // Await the critical message creation synchronously to guarantee delivery before ACK
+        await Message.create({
+          _id: messageId,
+          roomId,
+          senderId: userId,
+          content: content || '',
+          type: type || 'text',
+          mediaUrl: mediaUrl || '',
+          status: initialStatus,
+          seenBy: [userId]
+        });
+        const tDbWriteTotal = Date.now() - tDbStart;
+
+        // Update the Room lastMessage pointer in background with retry logic to ensure eventual consistency
+        const updateRoomLastMessage = async (attempts = 3) => {
+          try {
+            await ChatRoom.findByIdAndUpdate(roomId, { lastMessage: messageId });
+          } catch (err) {
+            if (attempts > 1) {
+              console.warn(`Room update failed. Retrying... (${attempts - 1} attempts left)`);
+              await new Promise(res => setTimeout(res, 500));
+              await updateRoomLastMessage(attempts - 1);
+            } else {
+              console.error(`Critical Consistency Error: Failed to update room lastMessage after retries:`, err.message);
+            }
+          }
+        };
+        updateRoomLastMessage();
+
+        // 3. Construct populated message in-memory (0ms database time)
+        const tPopulateStart = Date.now();
+        const populatedMessage = {
+          _id: messageId,
+          roomId,
+          senderId: {
+            _id: socket.user._id,
+            name: socket.user.name,
+            email: socket.user.email,
+            avatar: socket.user.avatar || ''
+          },
+          content: content || '',
+          type: type || 'text',
+          mediaUrl: mediaUrl || '',
+          status: initialStatus,
+          seenBy: [userId],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        const tPopulate = Date.now() - tPopulateStart;
+
+        // 4. Emit status update to other recipients if delivered (asynchronously in background)
+        const tDeliveredStart = Date.now();
         if (hasAnyOnlineRecipient) {
-          message.status = 'delivered';
-          await message.save();
           io.to(roomId).emit('message:status_update', {
-            messageId: message._id,
+            messageId,
             roomId,
             status: 'delivered'
           });
         }
+        const tDelivered = Date.now() - tDeliveredStart;
+
+        const totalServerTime = Date.now() - tStart;
+        const diagnostics = {
+          authTime: tAuth,
+          dbWriteTime: tDbWriteTotal,
+          roomUpdateTime: 0, // executed in parallel above
+          populateTime: tPopulate, // 0ms (in-memory)
+          deliveredStatusTime: tDelivered,
+          totalServerTime
+        };
+
+        const responsePayload = {
+          success: true,
+          message: populatedMessage,
+          diagnostics
+        };
+
+        // Execute acknowledgement callback for sender (single tick ACK)
+        if (typeof ackCallback === 'function') {
+          ackCallback(responsePayload);
+        } else {
+          socket.emit('message:ack', responsePayload);
+        }
+
+        // Relay message to the room channel (append broadcast start time)
+        const relayPayload = { ...populatedMessage };
+        relayPayload.broadcastStartTime = Date.now();
+
+        socket.to(roomId).emit('message:receive', relayPayload);
+
       } catch (err) {
         console.error('Socket message send error:', err.message);
         socket.emit('error_message', { message: 'Failed to process and send message' });
@@ -169,7 +237,7 @@ const initSocket = (io) => {
     });
 
     // D. Event: Message Delivered receipt from client
-    socket.on('message:delivered', async ({ messageId, roomId }) => {
+    socket.on('message:delivered', async ({ messageId, roomId }, ack) => {
       try {
         const message = await Message.findById(messageId);
         if (message && message.status === 'sent') {
@@ -183,15 +251,20 @@ const initSocket = (io) => {
             status: 'delivered'
           });
         }
+        if (typeof ack === 'function') ack({ success: true });
       } catch (err) {
         console.error('Socket message:delivered error:', err.message);
+        if (typeof ack === 'function') ack({ success: false, error: err.message });
       }
     });
 
     // E. Event: Message Read / Seen receipt
-    socket.on('message:read', async ({ roomId }) => {
+    socket.on('message:read', async ({ roomId }, ack) => {
       try {
-        if (!roomId) return;
+        if (!roomId) {
+          if (typeof ack === 'function') ack({ success: false, error: 'Room ID is required' });
+          return;
+        }
 
         // Update all unread messages in the room sent by others
         await Message.updateMany(
@@ -212,30 +285,65 @@ const initSocket = (io) => {
           userId,
           status: 'seen'
         });
+        if (typeof ack === 'function') ack({ success: true });
       } catch (err) {
         console.error('Socket message:read receipt error:', err.message);
+        if (typeof ack === 'function') ack({ success: false, error: err.message });
       }
     });
 
     // F. Event: Start Typing indicator
-    socket.on('typing:start', ({ roomId }) => {
+    socket.on('typing:start', ({ roomId }, ack) => {
       if (roomId) {
         socket.to(roomId).emit('typing:start', {
           roomId,
           userId,
           name: username
         });
+        if (typeof ack === 'function') ack({ success: true });
+      } else {
+        if (typeof ack === 'function') ack({ success: false, error: 'Room ID is required' });
       }
     });
 
     // G. Event: Stop Typing indicator
-    socket.on('typing:stop', ({ roomId }) => {
+    socket.on('typing:stop', ({ roomId }, ack) => {
       if (roomId) {
         socket.to(roomId).emit('typing:stop', {
           roomId,
           userId
         });
+        if (typeof ack === 'function') ack({ success: true });
+      } else {
+        if (typeof ack === 'function') ack({ success: false, error: 'Room ID is required' });
       }
+    });
+
+    // Explicit user presence signaling
+    socket.on('user:online', ({ userId: clientUserId }, ack) => {
+      if (!onlineUsers.has(userId)) {
+        onlineUsers.set(userId, new Set());
+      }
+      onlineUsers.get(userId).add(socket.id);
+      
+      socket.broadcast.emit('presence:online', {
+        userId,
+        name: username
+      });
+      if (typeof ack === 'function') ack({ success: true });
+    });
+
+    socket.on('presence:online', ({ userId: clientUserId }, ack) => {
+      if (!onlineUsers.has(userId)) {
+        onlineUsers.set(userId, new Set());
+      }
+      onlineUsers.get(userId).add(socket.id);
+      
+      socket.broadcast.emit('presence:online', {
+        userId,
+        name: username
+      });
+      if (typeof ack === 'function') ack({ success: true });
     });
 
     // ==========================================

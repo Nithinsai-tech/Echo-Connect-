@@ -77,6 +77,21 @@ const processMessageTimeline = (rawMessages) => {
   });
 };
 
+// Deduplicate by message ID and sort chronologically (oldest to newest)
+const deduplicateAndSortMessages = (msgs) => {
+  const map = new Map();
+  msgs.forEach(m => {
+    if (m && m._id) {
+      map.set(m._id.toString(), m);
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
+    if (timeDiff !== 0) return timeDiff;
+    return a._id.toString().localeCompare(b._id.toString());
+  });
+};
+
 const incomingBubbleColorPresets = {
   'light-gray': {
     lightBg: '#EFEFEF',
@@ -310,6 +325,7 @@ export const ChatProvider = ({ children }) => {
   const apiErrorTimeoutRef = useRef(null);
   const onlineUsersRef = useRef(onlineUsers);
   const clientTypingTimeoutsRef = useRef({});
+  const activeAbortControllerRef = useRef(null);
 
   useEffect(() => {
     onlineUsersRef.current = onlineUsers;
@@ -349,6 +365,116 @@ export const ChatProvider = ({ children }) => {
     Object.values(clientTypingTimeoutsRef.current).forEach(clearTimeout);
     clientTypingTimeoutsRef.current = {};
   }, [activeRoom]);
+
+  // Synchronize activeRoom with updated data from rooms list (presence, last message, status ticks)
+  useEffect(() => {
+    if (activeRoom) {
+      const updatedRoom = rooms.find(r => r._id === activeRoom._id);
+      if (updatedRoom) {
+        const participantsChanged = updatedRoom.participants.some((p, idx) => {
+          const prevP = activeRoom.participants[idx];
+          return !prevP || p.isOnline !== prevP.isOnline || p.lastSeen !== prevP.lastSeen;
+        });
+        const lastMsgChanged = updatedRoom.lastMessage?._id !== activeRoom.lastMessage?._id ||
+                             updatedRoom.lastMessage?.status !== activeRoom.lastMessage?.status;
+        const nameChanged = updatedRoom.groupName !== activeRoom.groupName || updatedRoom.groupAvatar !== activeRoom.groupAvatar;
+        const unreadChanged = updatedRoom.unreadCount !== activeRoom.unreadCount;
+
+        if (participantsChanged || lastMsgChanged || nameChanged || unreadChanged) {
+          setActiveRoom(updatedRoom);
+        }
+      }
+    }
+  }, [rooms, activeRoom]);
+
+  // Automatic Background state synchronization
+  const synchronizeState = useCallback(async () => {
+    if (!user) return;
+    console.log('Running automatic background state synchronization...');
+    try {
+      await Promise.all([
+        getRooms().then(response => {
+          if (response.success) {
+            const updatedRooms = response.data.map(room => ({
+              ...room,
+              participants: room.participants.map(p => ({
+                ...p,
+                isOnline: onlineUsersRef.current.has(p._id.toString())
+              }))
+            }));
+            setRooms(updatedRooms);
+          }
+        }),
+        getAllUsers().then(response => {
+          if (response.success) {
+            const updatedUsers = response.data.map(u => ({
+              ...u,
+              isOnline: onlineUsersRef.current.has(u._id.toString())
+            }));
+            setUsers(updatedUsers);
+          }
+        }),
+        getFriendRequests().then(response => {
+          if (response.success) {
+            setFriendRequests({
+              incoming: response.incoming || [],
+              outgoing: response.outgoing || []
+            });
+          }
+        })
+      ]);
+
+      const currentActiveRoom = activeRoomRef.current;
+      if (currentActiveRoom) {
+        await fetchMessages(currentActiveRoom._id, null, true);
+
+        if (socket && socket.connected) {
+          socket.emit('room:join', { roomId: currentActiveRoom._id }, (ack) => {
+            if (!ack || !ack.success) console.warn('room:join ack failed on sync');
+          });
+          const readReceiptsOn = localStorage.getItem('pref_read_receipts') !== 'false';
+          if (readReceiptsOn) {
+            socket.emit('message:read', { roomId: currentActiveRoom._id }, (ack) => {
+              if (!ack || !ack.success) console.warn('message:read ack failed on sync');
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Background synchronization failed:', err);
+    }
+  }, [user, socket]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const handleWindowFocus = () => {
+      synchronizeState();
+    };
+
+    const handleWindowOnline = () => {
+      if (socket && !socket.connected) {
+        socket.connect();
+      }
+      synchronizeState();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        synchronizeState();
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('online', handleWindowOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('online', handleWindowOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user, socket, synchronizeState]);
 
   // Request browser push notification permission on mount
   useEffect(() => {
@@ -402,6 +528,19 @@ export const ChatProvider = ({ children }) => {
           return { ...room, participants: updatedParticipants };
         });
         setRooms(updatedRooms);
+
+        // Proactively emit delivered status for unread messages sent by others
+        if (socket && socket.connected) {
+          updatedRooms.forEach(room => {
+            if (room.lastMessage) {
+              const lastMsg = room.lastMessage;
+              const senderIdStr = lastMsg.senderId?._id || lastMsg.senderId;
+              if (senderIdStr !== user._id && lastMsg.status === 'sent') {
+                socket.emit('message:delivered', { messageId: lastMsg._id, roomId: room._id });
+              }
+            }
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching rooms:', err.message);
@@ -409,7 +548,7 @@ export const ChatProvider = ({ children }) => {
     } finally {
       setLoadingRooms(false);
     }
-  }, [user]);
+  }, [user, socket]);
 
   // 2. Fetch User Directory
   const fetchUsers = useCallback(async () => {
@@ -524,29 +663,68 @@ export const ChatProvider = ({ children }) => {
   }, [user, fetchRooms, fetchUsers, fetchFriendRequests]);
 
   // 3. Fetch messages for active room
-  const fetchMessages = async (roomId, cursor = null) => {
+  const fetchMessages = async (roomId, cursor = null, isBackground = false) => {
+    // Abort previous request when switching rooms (loading initial room messages)
+    if (!cursor) {
+      if (activeAbortControllerRef.current) {
+        activeAbortControllerRef.current.abort();
+      }
+      activeAbortControllerRef.current = new AbortController();
+    }
+
+    const currentSignal = !cursor ? activeAbortControllerRef.current.signal : null;
+
     if (cursor) {
       try {
         const response = await getRoomMessages(roomId, { cursor, limit: 20 });
+        // Guard against race conditions
+        if (activeRoomRef.current?._id !== roomId) return;
         if (response.success && response.data) {
           const { messages: fetchedMessages, pagination } = response.data;
-          setRawMessages(prev => [...fetchedMessages, ...prev]);
+          setRawMessages(prev => deduplicateAndSortMessages([...fetchedMessages, ...prev]));
           setHasMoreMessages(pagination.hasMore);
           setNextCursor(pagination.nextCursor);
+
+          // Proactively mark loaded messages as delivered
+          if (socket && socket.connected) {
+            fetchedMessages.forEach(msg => {
+              const senderIdStr = msg.senderId?._id || msg.senderId;
+              if (senderIdStr !== user?._id && msg.status === 'sent') {
+                socket.emit('message:delivered', { messageId: msg._id, roomId });
+              }
+            });
+          }
         }
       } catch (err) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+          return;
+        }
         console.error('Error fetching older messages:', err.message);
         triggerApiError();
       }
     } else {
-      setLoadingMessages(true);
+      if (!isBackground) {
+        setLoadingMessages(true);
+      }
       try {
-        const response = await getRoomMessages(roomId, { limit: 20 });
+        const response = await getRoomMessages(roomId, { limit: 20 }, currentSignal);
+        // Guard against race conditions
+        if (activeRoomRef.current?._id !== roomId) return;
         if (response.success && response.data) {
           const { messages: fetchedMessages, pagination } = response.data;
-          setRawMessages(fetchedMessages);
+          setRawMessages(deduplicateAndSortMessages(fetchedMessages));
           setHasMoreMessages(pagination.hasMore);
           setNextCursor(pagination.nextCursor);
+
+          // Proactively mark loaded messages as delivered
+          if (socket && socket.connected) {
+            fetchedMessages.forEach(msg => {
+              const senderIdStr = msg.senderId?._id || msg.senderId;
+              if (senderIdStr !== user?._id && msg.status === 'sent') {
+                socket.emit('message:delivered', { messageId: msg._id, roomId });
+              }
+            });
+          }
 
           // Mark messages as read on the backend
           const readReceiptsOn = localStorage.getItem('pref_read_receipts') !== 'false';
@@ -555,15 +733,22 @@ export const ChatProvider = ({ children }) => {
           }
 
           // Emit socket read receipt
-          if (socket && readReceiptsOn) {
-            socket.emit('message:read', { roomId });
+          if (socket && socket.connected && readReceiptsOn) {
+            socket.emit('message:read', { roomId }, (ack) => {
+              if (!ack || !ack.success) console.warn('message:read ack failed');
+            });
           }
         }
       } catch (err) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+          return;
+        }
         console.error('Error fetching messages:', err.message);
-        triggerApiError();
+        if (!isBackground) triggerApiError();
       } finally {
-        setLoadingMessages(false);
+        if (activeRoomRef.current?._id === roomId) {
+          setLoadingMessages(false);
+        }
       }
     }
   };
@@ -578,11 +763,16 @@ export const ChatProvider = ({ children }) => {
   const selectRoom = (room) => {
     // Leave previous socket room and notify stopped typing
     if (socket && activeRoom) {
-      socket.emit('room:leave', { roomId: activeRoom._id });
-      socket.emit('typing:stop', { roomId: activeRoom._id });
+      socket.emit('room:leave', { roomId: activeRoom._id }, (ack) => {
+        if (!ack || !ack.success) console.warn('room:leave ack failed');
+      });
+      socket.emit('typing:stop', { roomId: activeRoom._id }, (ack) => {
+        if (!ack || !ack.success) console.warn('typing:stop ack failed');
+      });
     }
 
     setActiveRoom(room);
+    setRawMessages([]); // Clear messages immediately to avoid flashing previous room history
     setTypingUsers({});
     setHasMoreMessages(false);
     setNextCursor(null);
@@ -594,14 +784,16 @@ export const ChatProvider = ({ children }) => {
       fetchMessages(room._id);
       
       const readReceiptsOn = localStorage.getItem('pref_read_receipts') !== 'false';
-      if (socket) {
-        socket.emit('room:join', { roomId: room._id });
+      if (socket && socket.connected) {
+        socket.emit('room:join', { roomId: room._id }, (ack) => {
+          if (!ack || !ack.success) console.warn('room:join ack failed');
+        });
         if (readReceiptsOn) {
-          socket.emit('message:read', { roomId: room._id });
+          socket.emit('message:read', { roomId: room._id }, (ack) => {
+            if (!ack || !ack.success) console.warn('message:read ack failed');
+          });
         }
       }
-    } else {
-      setRawMessages([]);
     }
   };
 
@@ -694,37 +886,95 @@ export const ChatProvider = ({ children }) => {
   // 11. Send Message
   const sendMessage = (content, mediaUrl = '', type = 'text') => {
     return new Promise((resolve, reject) => {
-      if (!socket || !activeRoom) return reject(new Error('Socket or active room not found'));
+      const activeRoomId = activeRoomRef.current?._id;
+      if (!activeRoomId) return reject(new Error('No active room selected'));
 
-      const messagePayload = {
-        roomId: activeRoom._id,
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const optimisticMessage = {
+        _id: tempId,
+        roomId: activeRoomId,
+        senderId: {
+          _id: user._id,
+          name: user.name,
+          avatar: user.avatar,
+          email: user.email
+        },
         content,
         type,
-        mediaUrl
+        mediaUrl,
+        status: 'sending',
+        createdAt: new Date().toISOString(),
+        seenBy: [user._id]
       };
 
-      socket.emit('message:send', messagePayload, (response) => {
-        if (response && response.success) {
-          const newMessage = response.message;
-          setRawMessages(prev => [...prev, newMessage]);
+      // Immediately append optimistic message
+      setRawMessages(prev => deduplicateAndSortMessages([...prev, optimisticMessage]));
 
-          setRooms(prev => {
-            const roomIdx = prev.findIndex(r => r._id === activeRoom._id);
-            if (roomIdx === -1) return prev;
-            const updatedRooms = [...prev];
-            updatedRooms[roomIdx] = {
-              ...updatedRooms[roomIdx],
-              lastMessage: newMessage,
-              updatedAt: new Date().toISOString()
-            };
-            return updatedRooms.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-          });
-          resolve(newMessage);
-        } else {
-          triggerApiError('Failed to send message.');
-          reject(new Error('Failed to send message'));
-        }
+      // Immediately update sidebar room preview
+      setRooms(prev => {
+        const roomIdx = prev.findIndex(r => r._id === activeRoomId);
+        if (roomIdx === -1) return prev;
+        const updatedRooms = [...prev];
+        updatedRooms[roomIdx] = {
+          ...updatedRooms[roomIdx],
+          lastMessage: optimisticMessage,
+          updatedAt: optimisticMessage.createdAt
+        };
+        return updatedRooms.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       });
+
+      const attempt = () => {
+        if (!socket || !socket.connected) {
+          console.warn(`Socket offline. Message queued in-memory for auto-retry when connection returns...`);
+          const checkAndSend = () => {
+            if (socket && socket.connected) {
+              sendPayload();
+            } else {
+              setTimeout(checkAndSend, 1000);
+            }
+          };
+          checkAndSend();
+          return;
+        }
+
+        sendPayload();
+      };
+
+      const sendPayload = () => {
+        const messagePayload = {
+          roomId: activeRoomId,
+          content,
+          type,
+          mediaUrl
+        };
+
+        socket.emit('message:send', messagePayload, (response) => {
+          if (response && response.success) {
+            const newMessage = response.message;
+            setRawMessages(prev => prev.map(m => m._id === tempId ? newMessage : m));
+
+            setRooms(prev => {
+              const roomIdx = prev.findIndex(r => r._id === activeRoomId);
+              if (roomIdx === -1) return prev;
+              const updatedRooms = [...prev];
+              updatedRooms[roomIdx] = {
+                ...updatedRooms[roomIdx],
+                lastMessage: newMessage,
+                updatedAt: newMessage.createdAt
+              };
+              return updatedRooms.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+            });
+            resolve(newMessage);
+          } else {
+            // Structural validation or database schema error: Fail immediately
+            setRawMessages(prev => prev.map(m => m._id === tempId ? { ...m, status: 'failed' } : m));
+            triggerApiError('Failed to send message.');
+            reject(new Error('Failed to send message'));
+          }
+        });
+      };
+
+      attempt();
     });
   };
 
@@ -861,8 +1111,8 @@ export const ChatProvider = ({ children }) => {
       };
       socket.emit('message:send', messagePayload, (response) => {
         if (response && response.success) {
-          if (activeRoom && activeRoom._id === targetRoomId) {
-            setRawMessages(prev => [...prev, response.message]);
+          if (activeRoomRef.current?._id === targetRoomId) {
+            setRawMessages(prev => deduplicateAndSortMessages([...prev, response.message]));
           }
           resolve(response.message);
         } else {
@@ -876,16 +1126,20 @@ export const ChatProvider = ({ children }) => {
   const sendTypingStart = () => {
     const typingOn = localStorage.getItem('pref_typing_indicators') !== 'false';
     if (!typingOn) return;
-    if (socket && activeRoom) {
-      socket.emit('typing:start', { roomId: activeRoom._id });
+    if (socket && socket.connected && activeRoom) {
+      socket.emit('typing:start', { roomId: activeRoom._id }, (ack) => {
+        if (!ack || !ack.success) console.warn('typing:start ack failed');
+      });
     }
   };
 
   const sendTypingStop = () => {
     const typingOn = localStorage.getItem('pref_typing_indicators') !== 'false';
     if (!typingOn) return;
-    if (socket && activeRoom) {
-      socket.emit('typing:stop', { roomId: activeRoom._id });
+    if (socket && socket.connected && activeRoom) {
+      socket.emit('typing:stop', { roomId: activeRoom._id }, (ack) => {
+        if (!ack || !ack.success) console.warn('typing:stop ack failed');
+      });
     }
   };
 
@@ -931,8 +1185,12 @@ export const ChatProvider = ({ children }) => {
     if (!socket || !user) return;
 
     // Emit presence on load/auth success
-    socket.emit('user:online', { userId: user._id });
-    socket.emit('presence:online', { userId: user._id });
+    socket.emit('user:online', { userId: user._id }, (ack) => {
+      if (!ack || !ack.success) console.warn('user:online ack failed');
+    });
+    socket.emit('presence:online', { userId: user._id }, (ack) => {
+      if (!ack || !ack.success) console.warn('presence:online ack failed');
+    });
 
     // A. Receive message
     const handleReceiveMessage = (message) => {
@@ -948,7 +1206,7 @@ export const ChatProvider = ({ children }) => {
           const parsed = JSON.parse(message.content);
           if (parsed._echoType === 'reaction' || parsed._echoType === 'pin' || parsed._echoType === 'delete_everyone') {
             if (currentActiveRoom && message.roomId === currentActiveRoom._id) {
-              setRawMessages(prev => [...prev, message]);
+              setRawMessages(prev => deduplicateAndSortMessages([...prev, message]));
             }
             return;
           }
@@ -957,12 +1215,14 @@ export const ChatProvider = ({ children }) => {
 
       // Append to active message log if in active room
       if (currentActiveRoom && message.roomId === currentActiveRoom._id) {
-        setRawMessages(prev => [...prev, message]);
+        setRawMessages(prev => deduplicateAndSortMessages([...prev, message]));
         
         // Mark as read immediately on active room messages from other users
         const readReceiptsOn = localStorage.getItem('pref_read_receipts') !== 'false';
         if (message.senderId?._id !== user._id && readReceiptsOn) {
-          socket.emit('message:read', { roomId: currentActiveRoom._id });
+          socket.emit('message:read', { roomId: currentActiveRoom._id }, (ack) => {
+            if (!ack || !ack.success) console.warn('message:read ack failed');
+          });
           markMessagesAsRead(currentActiveRoom._id).catch(err => console.error(err));
         }
       }
@@ -992,7 +1252,9 @@ export const ChatProvider = ({ children }) => {
 
       // Send delivered receipt if message is newly received and sent by others
       if (message.senderId?._id !== user._id && message.status === 'sent') {
-        socket.emit('message:delivered', { messageId: message._id, roomId: message.roomId });
+        socket.emit('message:delivered', { messageId: message._id, roomId: message.roomId }, (ack) => {
+          if (!ack || !ack.success) console.warn('message:delivered ack failed');
+        });
       }
 
       // Trigger alerts if message was sent by someone else
@@ -1167,14 +1429,28 @@ export const ChatProvider = ({ children }) => {
       setIsReconnecting(false);
 
       // Re-emit online status
-      socket.emit('user:online', { userId: user._id });
-      socket.emit('presence:online', { userId: user._id });
+      socket.emit('user:online', { userId: user._id }, (ack) => {
+        if (!ack || !ack.success) console.warn('user:online ack failed');
+      });
+      socket.emit('presence:online', { userId: user._id }, (ack) => {
+        if (!ack || !ack.success) console.warn('presence:online ack failed');
+      });
+
+      // Synchronize all room previews, lastMessages, and unread counts upon reconnection
+      fetchRooms().catch(err => console.error('Error fetching rooms on reconnect:', err));
 
       const currentActiveRoom = activeRoomRef.current;
       if (currentActiveRoom) {
         fetchMessages(currentActiveRoom._id);
-        socket.emit('room:join', { roomId: currentActiveRoom._id });
-        socket.emit('message:read', { roomId: currentActiveRoom._id });
+        socket.emit('room:join', { roomId: currentActiveRoom._id }, (ack) => {
+          if (!ack || !ack.success) console.warn('room:join ack failed');
+        });
+        const readReceiptsOn = localStorage.getItem('pref_read_receipts') !== 'false';
+        if (readReceiptsOn) {
+          socket.emit('message:read', { roomId: currentActiveRoom._id }, (ack) => {
+            if (!ack || !ack.success) console.warn('message:read ack failed');
+          });
+        }
       }
     };
 
@@ -1182,6 +1458,9 @@ export const ChatProvider = ({ children }) => {
       if (reason === 'io server disconnect' || reason === 'transport close') {
         setIsReconnecting(true);
       }
+      setTypingUsers({});
+      Object.values(clientTypingTimeoutsRef.current).forEach(clearTimeout);
+      clientTypingTimeoutsRef.current = {};
     };
 
     const handleReconnectAttempt = () => {
