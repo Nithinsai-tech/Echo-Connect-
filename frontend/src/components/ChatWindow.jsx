@@ -87,6 +87,29 @@ const renderHighlightText = (text, highlight) => {
   );
 };
 
+// Helper to safely extract sender ID string
+const getSenderId = (senderId) => {
+  if (!senderId) return '';
+  if (typeof senderId === 'object') {
+    return senderId._id ? senderId._id.toString() : '';
+  }
+  return senderId.toString();
+};
+
+const isMessageFromSelf = (msg, currentUser) => {
+  if (!msg || !currentUser) return false;
+  const msgSenderId = getSenderId(msg.senderId);
+  const currentUserId = typeof currentUser === 'object' ? currentUser._id?.toString() : currentUser.toString();
+  return msgSenderId && currentUserId && msgSenderId === currentUserId;
+};
+
+const isSameSender = (msg1, msg2) => {
+  if (!msg1 || !msg2) return false;
+  const id1 = getSenderId(msg1.senderId);
+  const id2 = getSenderId(msg2.senderId);
+  return id1 && id2 && id1 === id2;
+};
+
 // Memoized MessageItem Component for rendering performance
 const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser, searchQuery, isConsecutive, isContextMenuOpen }) => {
   const [touchStart, setTouchStart] = useState(null);
@@ -184,7 +207,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchCancel}
-        style={{ transform: `translateX(${swipeOffset}px)` }}
+        style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
         data-message-id={msg._id}
         className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} ${
           isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
@@ -272,9 +295,9 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
-      style={{ transform: `translateX(${swipeOffset}px)` }}
+      style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
       data-message-id={msg._id}
-      className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} ${
+      className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${
         isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
       } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
     >
@@ -1415,7 +1438,7 @@ const ChatWindow = () => {
       size += 40;
     }
     
-    const isConsecutive = prevMsg && !showSeparator && prevMsg.senderId?._id === msg.senderId?._id;
+    const isConsecutive = prevMsg && !showSeparator && isSameSender(prevMsg, msg);
     if (isConsecutive) {
       size -= 8;
     } else {
@@ -1459,12 +1482,12 @@ const ChatWindow = () => {
     const msg = messages[index];
     if (!msg) return null;
 
-    const isSelf = msg.senderId?._id === user?._id;
+    const isSelf = isMessageFromSelf(msg, user);
     const isUnreadByMe = !isSelf && !msg.seenBy?.includes(user?._id);
     
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-    const isConsecutive = prevMsg && !showDateSeparator && prevMsg.senderId?._id === msg.senderId?._id;
+    const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
 
     return (
       <div style={style} className="px-4 md:px-5">
@@ -1807,12 +1830,12 @@ const ChatWindow = () => {
               )}
 
               {messages.map((msg, index) => {
-                const isSelf = msg.senderId?._id === user?._id;
+                const isSelf = isMessageFromSelf(msg, user);
                 const isUnreadByMe = !isSelf && !msg.seenBy?.includes(user?._id);
                 
                 const prevMsg = index > 0 ? messages[index - 1] : null;
                 const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-                const isConsecutive = prevMsg && !showDateSeparator && prevMsg.senderId?._id === msg.senderId?._id;
+                const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
 
                 return (
                   <div key={msg._id}>
