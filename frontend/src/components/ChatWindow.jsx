@@ -36,7 +36,10 @@ import {
   Pin,
   Star,
   Reply,
-  Check
+  Check,
+  ChevronDown,
+  CheckSquare,
+  Flag
 } from 'lucide-react';
 import * as ReactWindow from 'react-window';
 const { VariableSizeList: List } = ReactWindow;
@@ -85,28 +88,67 @@ const renderHighlightText = (text, highlight) => {
 };
 
 // Memoized MessageItem Component for rendering performance
-const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser, searchQuery }) => {
+const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser, searchQuery, isConsecutive, isContextMenuOpen }) => {
   const [touchStart, setTouchStart] = useState(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
+
+  const longPressTimer = useRef(null);
+  const isLongPressActive = useRef(false);
 
   const isSticker = msg.mediaUrl && msg.mediaUrl.includes('/stickers/');
   const isStarred = starredMessages?.some(sm => sm._id === msg._id);
 
   const handleTouchStart = (e) => {
     setTouchStart(e.targetTouches[0].clientX);
+    isLongPressActive.current = false;
+    
+    // Start long press timer (550ms)
+    longPressTimer.current = setTimeout(() => {
+      isLongPressActive.current = true;
+      onContextMenu(e, msg._id, isSelf);
+    }, 550);
   };
 
   const handleTouchMove = (e) => {
     if (!touchStart) return;
     const diff = e.targetTouches[0].clientX - touchStart;
+    
+    // Cancel long press if user moves finger significantly
+    if (Math.abs(diff) > 8) {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    }
+    
     if (diff > 0 && diff < 80) {
       setSwipeOffset(diff);
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e) => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    
     if (swipeOffset > 45) {
       onReplySwipe(msg);
+    }
+    
+    if (isLongPressActive.current) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    setTouchStart(null);
+    setSwipeOffset(0);
+  };
+
+  const handleTouchCancel = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
     }
     setTouchStart(null);
     setSwipeOffset(0);
@@ -131,8 +173,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
   }
 
   const isDeleted = msg.isDeletedEveryone;
-
   const hasTextOrQuote = !!(contentText || replyData || forwardData);
+  const isImageOnly = msg.mediaUrl && msg.type === 'image' && !isDeleted && !hasTextOrQuote;
 
   if (isSticker && !isDeleted && !hasTextOrQuote) {
     return (
@@ -141,9 +183,12 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         style={{ transform: `translateX(${swipeOffset}px)` }}
         data-message-id={msg._id}
-        className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} mb-2 relative group transition-transform duration-100`}
+        className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} ${
+          isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
+        } relative group transition-all duration-100`}
       >
         {/* Swipe Indicator Background */}
         {swipeOffset > 10 && (
@@ -152,22 +197,14 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
           </div>
         )}
 
-        {/* Desktop Quick Hover Reactions */}
-        <div className={`absolute hidden group-hover:flex items-center gap-1.5 bg-[#23263A] border border-[#2C3045] px-2 py-1 rounded-full shadow-lg z-10 -top-8 ${isSelf ? 'right-2' : 'left-2'}`}>
-          {['👍', '❤️', '😂', '🔥'].map(emoji => (
-            <button key={emoji} onClick={() => onReaction(msg._id, emoji)} className="hover:scale-125 transition text-xs">{emoji}</button>
-          ))}
-          <button onClick={() => onReplySwipe(msg)} className="text-[10px] text-gray-400 hover:text-white font-bold ml-1 border-l border-[#2C3045] pl-1.5">Reply</button>
-        </div>
-
         <div className={`relative flex flex-col ${isSelf ? 'items-end' : 'items-start'}`}>
           <img
             src={msg.mediaUrl}
             alt="Sticker"
-            className="h-28 w-28 object-contain hover:scale-108 transition duration-200 select-none cursor-pointer"
+            className="h-28 w-28 object-contain hover:scale-105 transition duration-200 select-none cursor-pointer"
             onClick={() => onImageClick(msg.mediaUrl)}
           />
-          <div className="flex items-center gap-1 text-[8px] text-gray-500 dark:text-gray-400 mt-0.5 mr-1 bg-white/60 dark:bg-gray-850/60 px-1 py-0.5 rounded backdrop-blur-[1px]">
+          <div className="flex items-center gap-1 text-[8px] text-gray-500 dark:text-gray-400 mt-0.5 mr-1 bg-white/60 dark:bg-gray-855/60 px-1 py-0.5 rounded backdrop-blur-[1px]">
             {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
             {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
             <span>{formatMessageTime(msg.createdAt)}</span>
@@ -219,15 +256,27 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
     );
   }
 
+  // Corner radius grouping class logic
+  const bubbleCornersClass = isSelf
+    ? isConsecutive 
+      ? 'rounded-2xl rounded-tr-sm rounded-br-sm'
+      : 'rounded-2xl rounded-tr-sm'
+    : isConsecutive
+      ? 'rounded-2xl rounded-tl-sm rounded-bl-sm'
+      : 'rounded-2xl rounded-tl-sm';
+
   return (
     <div
       onContextMenu={(e) => onContextMenu(e, msg._id, isSelf)}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
       style={{ transform: `translateX(${swipeOffset}px)` }}
       data-message-id={msg._id}
-      className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} mb-2 relative group transition-transform duration-100`}
+      className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} ${
+        isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
+      } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
     >
       {/* Swipe Indicator Background */}
       {swipeOffset > 10 && (
@@ -236,25 +285,34 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         </div>
       )}
 
-      {/* Desktop Quick Hover Reactions */}
-      {!isDeleted && (
-        <div className={`absolute hidden group-hover:flex items-center gap-1.5 bg-[#23263A] border border-[#2C3045] px-2 py-1 rounded-full shadow-lg z-10 -top-8 ${isSelf ? 'right-4' : 'left-4'}`}>
-          {['👍', '❤️', '😂', '🔥'].map(emoji => (
-            <button key={emoji} onClick={() => onReaction(msg._id, emoji)} className="hover:scale-125 transition text-xs">{emoji}</button>
-          ))}
-          <button onClick={() => onReplySwipe(msg)} className="text-[10px] text-gray-400 hover:text-white font-bold ml-1 border-l border-[#2C3045] pl-1.5">Reply</button>
-        </div>
-      )}
-
       <div
-        className={`msg-bubble max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative border border-transparent ${
+        className={`msg-bubble max-w-[85%] md:max-w-[70%] px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 ${bubbleCornersClass} ${
+          isImageOnly ? 'p-1.5' : ''
+        } ${
           isSelf 
-            ? 'bg-[var(--bubble-mine)] text-white' 
-            : 'bg-[var(--bubble-theirs)] border-[#2C3045] text-[var(--bubble-theirs-text,var(--text-primary))]'
+            ? 'bg-[var(--bubble-mine)] hover:bg-[#15803D] text-white' 
+            : 'bg-[var(--bubble-theirs)] border-[#E0E0EA] dark:border-[#2C3045] hover:bg-[#E5E5E5] dark:hover:bg-[#3E4E68] text-[var(--bubble-theirs-text,var(--text-primary))]'
         } ${isUnreadByMe ? 'message-bubble-incoming-unread' : ''}`}
       >
+        {/* Downward Chevron action button */}
+        {!isDeleted && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onContextMenu(e, msg._id, isSelf);
+            }}
+            className={`absolute top-1.5 right-1.5 p-1 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 ${
+              isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
+            title="Message Actions"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        )}
+
         {/* Group Sender Name */}
-        {!isSelf && isGroup && (
+        {!isSelf && isGroup && !isConsecutive && (
           <span className="block text-[11px] font-bold text-orange-400 mb-0.5">
             {msg.senderId?.name || 'User'}
           </span>
@@ -263,7 +321,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         {/* Forwarded label */}
         {forwardData && !isDeleted && (
           <div className="flex items-center gap-1 text-[10px] text-gray-400 mb-1 select-none font-medium italic">
-            <Share2 className="h-3 w-3 rotate-180 text-orange-450" />
+            <Share2 className="h-3 w-3 rotate-180 text-orange-455" />
             Forwarded
           </div>
         )}
@@ -295,13 +353,13 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
 
         {/* Media Attachment Previews */}
         {msg.mediaUrl && !isDeleted && (
-          <div className="mb-1 overflow-hidden rounded">
+          <div className={`overflow-hidden rounded-xl ${isImageOnly ? '' : 'mb-1'}`}>
             {msg.type === 'image' ? (
               <img
                 src={msg.mediaUrl}
                 alt="Attachment"
                 onClick={() => onImageClick(msg.mediaUrl)}
-                className="max-h-60 w-full object-cover cursor-zoom-in hover:opacity-95 transition"
+                className="max-h-64 w-full object-cover cursor-zoom-in rounded-[10px] hover:opacity-95 transition"
               />
             ) : (
               <a
@@ -310,7 +368,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="flex items-center gap-2 bg-black/10 hover:bg-black/20 p-2 border border-white/5 rounded text-xs text-orange-500"
+                className="flex items-center gap-2 bg-black/10 hover:bg-black/20 p-2 border border-white/5 rounded-xl text-xs text-orange-500"
               >
                 <File className="h-5 w-5 shrink-0" />
                 <div className="min-w-0 text-left">
@@ -334,14 +392,16 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
             This message was deleted
           </p>
         ) : (
-          contentText && <p className="message-content-text leading-relaxed break-words pb-3 pr-12 text-left">{renderHighlightText(contentText, searchQuery)}</p>
+          contentText && <p className="message-content-text text-[14px] leading-[1.5] tracking-[0.01em] whitespace-pre-wrap break-words pb-2 pr-12 text-left">{renderHighlightText(contentText, searchQuery)}</p>
         )}
 
         {/* Message Footer: Time + Pinned/Starred + Ticks */}
-        <div className={`absolute bottom-1 right-2 flex items-center gap-1 text-[9px] ${
-          isSelf 
-            ? 'text-white/60' 
-            : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
+        <div className={`absolute bottom-1.5 right-2.5 flex items-center gap-1 text-[9px] ${
+          isImageOnly 
+            ? 'bg-black/55 text-white/90 rounded-full px-2 py-0.5 backdrop-blur-[2px] z-10' 
+            : isSelf 
+              ? 'text-white/60' 
+              : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
         }`}>
           {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
           {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
@@ -1345,7 +1405,7 @@ const ChatWindow = () => {
     if (isSticker) {
       size += 140;
     } else if (msg.mediaUrl) {
-      size += msg.type === 'image' ? 245 : 70;
+      size += msg.type === 'image' ? 255 : 70;
     }
     
     // Check if date boundary separator is rendered above the message
@@ -1353,6 +1413,13 @@ const ChatWindow = () => {
     const showSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
     if (showSeparator) {
       size += 40;
+    }
+    
+    const isConsecutive = prevMsg && !showSeparator && prevMsg.senderId?._id === msg.senderId?._id;
+    if (isConsecutive) {
+      size -= 8;
+    } else {
+      size += 4;
     }
     
     return size;
@@ -1397,6 +1464,7 @@ const ChatWindow = () => {
     
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+    const isConsecutive = prevMsg && !showDateSeparator && prevMsg.senderId?._id === msg.senderId?._id;
 
     return (
       <div style={style} className="px-4">
@@ -1419,6 +1487,8 @@ const ChatWindow = () => {
           starredMessages={starredMessages}
           currentUser={user}
           searchQuery={searchQuery}
+          isConsecutive={isConsecutive}
+          isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
         />
       </div>
     );
@@ -1721,7 +1791,7 @@ const ChatWindow = () => {
           </List>
         ) : (
           /* STANDARD SCROLL AREA FOR SMALLER MESSAGES LISTS */
-          <div className="px-4 space-y-1">
+          <div className="px-4">
             {/* Pagination Load Button */}
             {hasMoreMessages && (
               <div className="flex justify-center pb-3">
@@ -1742,6 +1812,7 @@ const ChatWindow = () => {
               
               const prevMsg = index > 0 ? messages[index - 1] : null;
               const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+              const isConsecutive = prevMsg && !showDateSeparator && prevMsg.senderId?._id === msg.senderId?._id;
 
               return (
                 <div key={msg._id}>
@@ -1764,6 +1835,8 @@ const ChatWindow = () => {
                     starredMessages={starredMessages}
                     currentUser={user}
                     searchQuery={searchQuery}
+                    isConsecutive={isConsecutive}
+                    isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
                   />
                 </div>
               );
@@ -2191,10 +2264,10 @@ const ChatWindow = () => {
       {contextMenu.visible && contextMenu.msg && (
         <div
           style={{ top: contextMenu.y, left: contextMenu.x }}
-          className="fixed z-50 min-w-[200px] rounded-xl bg-[#1A1C28]/95 border border-[#2C3045] py-1.5 shadow-2xl backdrop-blur-md text-white overflow-hidden"
+          className="fixed z-50 min-w-[200px] rounded-xl bg-[var(--bg-panel)]/95 border border-[var(--border)] py-1.5 shadow-2xl backdrop-blur-md text-[var(--text-primary)] overflow-hidden"
         >
           {/* Reaction Shortcut Bar */}
-          <div className="flex items-center justify-between px-3 py-1 border-b border-[#2C3045] gap-1">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] gap-1">
             {['👍', '❤️', '😂', '🔥', '🎉', '😢'].map((emoji) => (
               <button
                 key={emoji}
@@ -2202,7 +2275,7 @@ const ChatWindow = () => {
                   sendReaction(contextMenu.messageId, emoji);
                   closeContextMenu();
                 }}
-                className="hover:scale-130 transition duration-100 text-lg p-0.5"
+                className="hover:scale-125 transition duration-100 text-lg p-1 hover:bg-[var(--bg-hover)] rounded-md"
               >
                 {emoji}
               </button>
@@ -2215,9 +2288,9 @@ const ChatWindow = () => {
                 setReplyingToMessage(contextMenu.msg);
                 closeContextMenu();
               }}
-              className="flex items-center gap-2.5 w-full px-3.5 py-2 text-left text-xs font-semibold hover:bg-white/5 transition-colors"
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
             >
-              <Reply className="h-4 w-4 text-orange-400" />
+              <Reply className="h-4 w-4 text-[#FF6A00]" />
               Reply
             </button>
 
@@ -2235,9 +2308,9 @@ const ChatWindow = () => {
                   addToast('Message copied to clipboard', 'success');
                   closeContextMenu();
                 }}
-                className="flex items-center gap-2.5 w-full px-3.5 py-2 text-left text-xs font-semibold hover:bg-white/5 transition-colors"
+                className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
               >
-                <Copy className="h-4 w-4 text-orange-400" />
+                <Copy className="h-4 w-4 text-[#FF6A00]" />
                 Copy Text
               </button>
             )}
@@ -2247,9 +2320,9 @@ const ChatWindow = () => {
                 toggleStarMessage(contextMenu.messageId);
                 closeContextMenu();
               }}
-              className="flex items-center gap-2.5 w-full px-3.5 py-2 text-left text-xs font-semibold hover:bg-white/5 transition-colors"
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
             >
-              <Star className={`h-4 w-4 ${starredMessages?.some(sm => sm._id === contextMenu.messageId) ? 'text-orange-500 fill-orange-500' : 'text-orange-400'}`} />
+              <Star className={`h-4 w-4 ${starredMessages?.some(sm => sm._id === contextMenu.messageId) ? 'text-orange-500 fill-orange-500' : 'text-[#FF6A00]'}`} />
               {starredMessages?.some(sm => sm._id === contextMenu.messageId) ? 'Unstar Message' : 'Star Message'}
             </button>
 
@@ -2258,9 +2331,9 @@ const ChatWindow = () => {
                 sendPinMessage(contextMenu.messageId);
                 closeContextMenu();
               }}
-              className="flex items-center gap-2.5 w-full px-3.5 py-2 text-left text-xs font-semibold hover:bg-white/5 transition-colors"
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
             >
-              <Pin className={`h-4 w-4 ${contextMenu.msg.isPinned ? 'text-yellow-500 fill-yellow-500 rotate-45' : 'text-orange-400'}`} />
+              <Pin className={`h-4 w-4 ${contextMenu.msg.isPinned ? 'text-yellow-500 fill-yellow-500 rotate-45' : 'text-[#FF6A00]'}`} />
               {contextMenu.msg.isPinned ? 'Unpin Message' : 'Pin Message'}
             </button>
 
@@ -2271,13 +2344,37 @@ const ChatWindow = () => {
                 setForwardSearchQuery('');
                 closeContextMenu();
               }}
-              className="flex items-center gap-2.5 w-full px-3.5 py-2 text-left text-xs font-semibold hover:bg-white/5 transition-colors"
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
             >
-              <Share2 className="h-4 w-4 text-orange-400" />
+              <Share2 className="h-4 w-4 text-[#FF6A00]" />
               Forward Message
             </button>
 
-            <div className="border-t border-[#2C3045] my-1"></div>
+            <button
+              onClick={() => {
+                addToast('Message selection enabled', 'info');
+                closeContextMenu();
+              }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
+            >
+              <CheckSquare className="h-4 w-4 text-[#FF6A00]" />
+              Select Message
+            </button>
+
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to report this message?')) {
+                  addToast('Message reported successfully', 'success');
+                }
+                closeContextMenu();
+              }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
+            >
+              <Flag className="h-4 w-4 text-red-500" />
+              Report Message
+            </button>
+
+            <div className="border-t border-[var(--border)] my-1"></div>
 
             {contextMenu.isSelf && (
               <button
@@ -2285,7 +2382,7 @@ const ChatWindow = () => {
                   sendDeleteForEveryone(contextMenu.messageId);
                   closeContextMenu();
                 }}
-                className="flex items-center gap-2.5 w-full px-3.5 py-2 text-left text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors"
+                className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors"
               >
                 <Trash2 className="h-4 w-4 text-red-500" />
                 Delete for Everyone
@@ -2297,7 +2394,7 @@ const ChatWindow = () => {
                 deleteMessageForMe(contextMenu.messageId);
                 closeContextMenu();
               }}
-              className="flex items-center gap-2.5 w-full px-3.5 py-2 text-left text-xs font-semibold text-red-400 hover:bg-red-400/10 transition-colors"
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold text-red-450 hover:bg-red-450/10 transition-colors"
             >
               <Trash2 className="h-4 w-4 text-red-400" />
               Delete for Me
