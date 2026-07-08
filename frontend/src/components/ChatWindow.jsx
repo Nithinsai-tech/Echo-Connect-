@@ -132,26 +132,40 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
 
   const isDeleted = msg.isDeletedEveryone;
 
-  if (isSticker && !isDeleted) {
+  const hasTextOrQuote = !!(contentText || replyData || forwardData);
+
+  if (isSticker && !isDeleted && !hasTextOrQuote) {
     return (
       <div
         onContextMenu={(e) => onContextMenu(e, msg._id, isSelf)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ transform: `translateX(${swipeOffset}px)` }}
         data-message-id={msg._id}
-        className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} mb-2 relative group`}
+        className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} mb-2 relative group transition-transform duration-100`}
       >
+        {/* Swipe Indicator Background */}
+        {swipeOffset > 10 && (
+          <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center text-orange-500 opacity-60">
+            <Reply className="h-4 w-4 animate-pulse" />
+          </div>
+        )}
+
         {/* Desktop Quick Hover Reactions */}
         <div className={`absolute hidden group-hover:flex items-center gap-1.5 bg-[#23263A] border border-[#2C3045] px-2 py-1 rounded-full shadow-lg z-10 -top-8 ${isSelf ? 'right-2' : 'left-2'}`}>
-          {['👍', '❤️', '🔥'].map(emoji => (
+          {['👍', '❤️', '😂', '🔥'].map(emoji => (
             <button key={emoji} onClick={() => onReaction(msg._id, emoji)} className="hover:scale-125 transition text-xs">{emoji}</button>
           ))}
           <button onClick={() => onReplySwipe(msg)} className="text-[10px] text-gray-400 hover:text-white font-bold ml-1 border-l border-[#2C3045] pl-1.5">Reply</button>
         </div>
 
-        <div className="relative flex flex-col items-end">
+        <div className={`relative flex flex-col ${isSelf ? 'items-end' : 'items-start'}`}>
           <img
             src={msg.mediaUrl}
             alt="Sticker"
             className="h-28 w-28 object-contain hover:scale-108 transition duration-200 select-none cursor-pointer"
+            onClick={() => onImageClick(msg.mediaUrl)}
           />
           <div className="flex items-center gap-1 text-[8px] text-gray-500 dark:text-gray-400 mt-0.5 mr-1 bg-white/60 dark:bg-gray-850/60 px-1 py-0.5 rounded backdrop-blur-[1px]">
             {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
@@ -167,6 +181,39 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
               )
             )}
           </div>
+
+          {/* Reactions pills layout */}
+          {msg.reactions && msg.reactions.length > 0 && (
+            <div className={`flex flex-wrap gap-1 mt-1 ${isSelf ? 'justify-end' : 'justify-start'}`}>
+              {Object.entries(
+                msg.reactions.reduce((acc, r) => {
+                  if (!acc[r.emoji]) acc[r.emoji] = [];
+                  acc[r.emoji].push(r.userId);
+                  return acc;
+                }, {})
+              ).map(([emoji, userIds]) => {
+                const hasReacted = userIds.includes(currentUser?._id);
+                return (
+                  <button
+                    key={emoji}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onReaction(msg._id, emoji, hasReacted ? 'remove' : 'add');
+                    }}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold transition ${
+                      hasReacted 
+                        ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' 
+                        : 'bg-black/25 border-white/5 text-gray-300 hover:bg-black/35'
+                    }`}
+                    title={`${userIds.length} reaction${userIds.length > 1 ? 's' : ''}`}
+                  >
+                    <span>{emoji}</span>
+                    <span>{userIds.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1294,7 +1341,10 @@ const ChatWindow = () => {
     if (msg.content) {
       size += Math.ceil(msg.content.length / 45) * 20;
     }
-    if (msg.mediaUrl) {
+    const isSticker = msg.mediaUrl && msg.mediaUrl.includes('/stickers/');
+    if (isSticker) {
+      size += 140;
+    } else if (msg.mediaUrl) {
       size += msg.type === 'image' ? 245 : 70;
     }
     
@@ -1585,7 +1635,7 @@ const ChatWindow = () => {
       {/* SEARCH BAR OVERLAY */}
       {searchOpen && (
         <div className="flex items-center justify-between border-b px-3 md:px-5 py-2 z-10 gap-2 md:gap-3 bg-[#1A1C28]" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-1 min-w-0 px-3 py-1 rounded-lg border border-transparent transition echo-search-container">
             <Search className="h-4 w-4 text-orange-400" />
             <input
               id="timeline-search-input"
@@ -1593,7 +1643,7 @@ const ChatWindow = () => {
               placeholder="Search in this conversation..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 border-none outline-none focus:ring-0 focus:outline-none"
+              className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 border-none outline-none focus:ring-0 focus:outline-none echo-search-input"
             />
             {searchResults.length > 0 && (
               <span className="text-xs text-gray-400 select-none">
@@ -2473,14 +2523,14 @@ const ChatWindow = () => {
 
             {/* Room Search Input */}
             <div className="p-3 border-b border-[#2C3045] bg-[#12121A]">
-              <div className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-lg border border-[#2C3045]">
+              <div className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-lg border border-[#2C3045] echo-search-container">
                 <Search className="h-3.5 w-3.5 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search chats..."
                   value={forwardSearchQuery}
                   onChange={(e) => setForwardSearchQuery(e.target.value)}
-                  className="bg-transparent text-xs w-full outline-none focus:outline-none placeholder-gray-500"
+                  className="bg-transparent text-xs w-full outline-none focus:outline-none placeholder-gray-500 echo-search-input"
                 />
               </div>
             </div>

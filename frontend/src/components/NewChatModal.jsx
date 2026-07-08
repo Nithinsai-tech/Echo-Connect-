@@ -286,14 +286,14 @@ const NewChatModal = ({ isOpen, onClose, initialStep = 'private' }) => {
 
             {/* Search Box */}
             <div className="border-b border-gray-100 dark:border-gray-800 px-4 py-2 bg-gray-50 dark:bg-gray-850">
-              <div className="flex items-center rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-850 px-3 py-1.5">
+              <div className="flex items-center rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-850 px-3 py-1.5 echo-search-container">
                 <Search className="mr-2 h-4 w-4 text-gray-400 dark:text-gray-550" />
                 <input
                   type="text"
                   placeholder={searchMode ? "Search globally by username or email" : "Search contacts"}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-transparent text-sm text-gray-800 dark:text-gray-100 focus:outline-none"
+                  className="w-full bg-transparent text-sm text-gray-800 dark:text-gray-100 focus:outline-none echo-search-input"
                 />
               </div>
             </div>
@@ -468,14 +468,14 @@ const NewChatModal = ({ isOpen, onClose, initialStep = 'private' }) => {
           <div className="flex flex-1 flex-col overflow-hidden min-h-0">
             {/* Search Box */}
             <div className="border-b border-gray-100 dark:border-gray-800 px-4 py-2 bg-gray-50 dark:bg-gray-850">
-              <div className="flex items-center rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-850 px-3 py-1.5">
+              <div className="flex items-center rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-850 px-3 py-1.5 echo-search-container">
                 <Search className="mr-2 h-4 w-4 text-gray-400 dark:text-gray-550" />
                 <input
                   type="text"
                   placeholder="Search contact"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-transparent text-sm text-gray-800 dark:text-gray-100 focus:outline-none"
+                  className="w-full bg-transparent text-sm text-gray-800 dark:text-gray-100 focus:outline-none echo-search-input"
                 />
               </div>
             </div>

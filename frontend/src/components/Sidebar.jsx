@@ -12,7 +12,8 @@ import {
   Settings,
   Plus,
   Users,
-  Check
+  Check,
+  Phone
 } from 'lucide-react';
 import NewChatModal from './NewChatModal';
 import ThemeToggle from './ThemeToggle';
@@ -100,7 +101,26 @@ const RoomItem = memo(({ room, isActive, user, typingUsers, selectRoom, getRoomM
           ) : (
             <span className="text-xs text-[var(--text-secondary)] truncate flex-1 pr-2">
               {room.lastMessage
-                ? room.lastMessage.content || 'Attachment file'
+                ? (() => {
+                    const rawContent = room.lastMessage.content;
+                    if (rawContent && rawContent.startsWith('{"_echoType"')) {
+                      try {
+                        const parsed = JSON.parse(rawContent);
+                        if (parsed._echoType === 'reply') {
+                          return parsed.text || 'Attachment file';
+                        } else if (parsed._echoType === 'forward') {
+                          return parsed.text || 'Forwarded attachment';
+                        } else if (parsed._echoType === 'reaction') {
+                          return `Reacted ${parsed.emoji}`;
+                        } else if (parsed._echoType === 'delete_everyone') {
+                          return 'This message was deleted';
+                        } else if (parsed._echoType === 'pin') {
+                          return 'Pinned a message';
+                        }
+                      } catch (e) {}
+                    }
+                    return rawContent || 'Attachment file';
+                  })()
                 : 'No messages yet'}
             </span>
           )}
@@ -250,7 +270,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         {/* Right icons */}
         <div className="flex items-center gap-1">
           <button
-            className="p-1.5 rounded-lg transition"
+            className="hidden md:inline-flex p-1.5 rounded-lg transition"
             style={{ color: '#9090A8' }}
             title="Notifications"
             aria-label="Notifications"
@@ -264,7 +284,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
 
           <button
             onClick={onOpenSettings}
-            className="p-1.5 rounded-lg transition"
+            className="hidden md:inline-flex p-1.5 rounded-lg transition"
             style={{ color: '#9090A8' }}
             title="Settings"
             aria-label="Settings"
@@ -276,7 +296,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
 
           <button
             onClick={logout}
-            className="p-1.5 rounded-lg transition"
+            className="hidden md:inline-flex p-1.5 rounded-lg transition"
             style={{ color: '#EF4444' }}
             title="Log Out"
             aria-label="Log Out"
@@ -290,7 +310,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
 
       {/* SEARCH BAR */}
       <div
-        className="mx-3.5 my-2.5 flex items-center gap-2 px-4 py-2.5 rounded-full border transition"
+        className="mx-3.5 my-2.5 flex items-center gap-2 px-4 py-2.5 rounded-full border transition echo-search-container"
         style={{
           backgroundColor: 'var(--bg-input)',
           borderColor: 'var(--border)'
@@ -302,7 +322,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
           placeholder="Search chats..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="bg-transparent border-none outline-none text-sm w-full"
+          className="bg-transparent border-none outline-none text-sm w-full echo-search-input"
           style={{ color: 'var(--text-primary)' }}
           aria-label="Search chats"
         />
@@ -584,6 +604,47 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         )}
       </div>
 
+      {/* DESKTOP PERSISTENT NAVIGATION BAR */}
+      <div 
+        className="hidden md:flex items-center justify-around py-3 border-t shrink-0"
+        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-panel)' }}
+      >
+        <button 
+          onClick={() => setActiveTab('All')}
+          className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-[#FF6A00] cursor-pointer"
+          style={{ color: activeTab === 'All' ? '#FF6A00' : '#9090A8' }}
+        >
+          <MessageSquare className="h-4 w-4" />
+          <span className="text-[10px] font-semibold">Chats</span>
+        </button>
+        <button 
+          onClick={() => alert('Voice & Video calls list is coming soon!')}
+          className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-[#FF6A00] cursor-pointer"
+          style={{ color: '#9090A8' }}
+        >
+          <Phone className="h-4 w-4" />
+          <span className="text-[10px] font-semibold">Calls</span>
+        </button>
+        <button 
+          onClick={onNewChat}
+          className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-[#FF6A00] cursor-pointer"
+          style={{ color: '#9090A8' }}
+        >
+          <Users className="h-4 w-4" />
+          <span className="text-[10px] font-semibold">People</span>
+        </button>
+        
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-700" />
+        
+        <button 
+          onClick={onOpenSettings}
+          className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-[#FF6A00] cursor-pointer"
+          style={{ color: '#9090A8' }}
+        >
+          <Settings className="h-4 w-4" />
+          <span className="text-[10px] font-semibold">Settings</span>
+        </button>
+      </div>
 
     </aside>
   );

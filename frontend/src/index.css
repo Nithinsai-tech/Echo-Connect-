@@ -41,20 +41,20 @@
 }
 
 html.dark {
-  --bg-base: #171923; /* Dark charcoal */
+  --bg-base: #0F172A; /* Main Background (wallpaper area) */
   --chat-bg-gradient: radial-gradient(circle at 10% 20%, rgba(255, 106, 0, 0.08) 0%, transparent 40%),
                       radial-gradient(circle at 90% 80%, rgba(37, 99, 235, 0.08) 0%, transparent 40%),
-                      #171923;
-  --bg-panel: #1B1E2B; /* Sidebar */
-  --bg-surface: #1E2232; /* Header / Panel surface */
-  --bg-input: #262B40; /* Input */
-  --bg-hover: #20253A; /* Hover / Cards */
-  --border: #2C3045; /* Borders */
+                      #0F172A;
+  --bg-panel: #1E293B; /* Sidebar/Left Panel Background */
+  --bg-surface: #334155; /* Headers (Sidebar/Chat headers), Modals, Context Menus */
+  --bg-input: #1E2434; /* Input background */
+  --bg-hover: #334155; /* Hover/Selected Lists */
+  --border: #334155; /* Default Borders */
   --text-primary: #FFFFFF; /* Primary Text */
   --text-secondary: #B5B8C9; /* Secondary Text */
   --text-muted: #7A8199; /* Muted Text */
   --bubble-mine: #16A34A; /* Own message bubbles should use #16A34A */
-  --bubble-theirs: #20253A; /* Received messages dark gray */
+  --bubble-theirs: #334155; /* Received messages dark gray */
   --orange-bg: rgba(255, 106, 0, 0.15);
 }
 
@@ -1497,3 +1497,33 @@ html.high-contrast * {
   position: relative;
   z-index: 10;
 }
+
+/* Search Input styling - Dark Mode only */
+html.dark .echo-search-container {
+  background-color: #1E2434 !important;
+  border: 1px solid #394154 !important;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+html.dark .echo-search-container:focus-within {
+  border-color: var(--orange) !important; /* dynamic brand accent color */
+}
+
+html.dark .echo-search-input {
+  background-color: transparent !important;
+  color: #FFFFFF !important;
+  caret-color: #FFFFFF !important;
+  transition: color 150ms ease;
+}
+
+html.dark .echo-search-input::placeholder {
+  color: #A8B0C5 !important;
+  opacity: 1 !important;
+}
+
+html.dark .echo-search-input::selection {
+  background-color: rgba(255, 106, 0, 0.3) !important; /* fallback */
+  background-color: color-mix(in srgb, var(--orange) 30%, transparent) !important; /* dynamic brand accent at 30% opacity */
+  color: #FFFFFF !important;
+}
+

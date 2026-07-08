@@ -9,6 +9,10 @@ export default {
     extend: {
       colors: {
         // We can add some clean custom colors if needed later, but standard tailwind colors are present by default.
+        gray: {
+          550: '#858E9E',
+          850: '#1A2035',
+        }
       }
     },
   },

@@ -5,10 +5,12 @@ import FloatingActionButton from '../components/FloatingActionButton';
 import NewChatModal from '../components/NewChatModal';
 import ProfileDrawer from '../components/ProfileDrawer';
 import { useChat } from '../hooks/useChat';
+import { useAuth } from '../hooks/useAuth';
 import { getInitials } from '../utils/getInitials';
-import { Loader2, X, MessageSquare, Phone, Users, Settings as SettingsIcon } from 'lucide-react';
+import { Loader2, X, MessageSquare, Phone, Users, LogOut } from 'lucide-react';
 
 const Chat = () => {
+  const { logout } = useAuth();
   const { 
     activeRoom, 
     isReconnecting, 
@@ -181,15 +183,11 @@ const Chat = () => {
             <span className="text-[10px] font-semibold">People</span>
           </button>
           <button 
-            onClick={() => {
-              setMobileTab('settings');
-              alert('Access settings from the top left profile icon!');
-            }}
-            className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
-            style={{ color: mobileTab === 'settings' ? '#FF6A00' : '#9090A8' }}
+            onClick={logout}
+            className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none text-red-500 hover:text-red-650 transition-colors"
           >
-            <SettingsIcon className="h-5 w-5" />
-            <span className="text-[10px] font-semibold">Settings</span>
+            <LogOut className="h-5 w-5" />
+            <span className="text-[10px] font-semibold">Sign Out</span>
           </button>
         </div>
       )}

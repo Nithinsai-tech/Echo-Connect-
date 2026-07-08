@@ -26,7 +26,7 @@ const FloatingActionButton = ({ onAction }) => {
   return (
     <div 
       ref={containerRef}
-      className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3 font-sans"
+      className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:bottom-6 right-6 z-40 flex flex-col items-end gap-3 font-sans"
     >
       {/* EXPANDABLE ACTIONS MENU */}
       {isOpen && (

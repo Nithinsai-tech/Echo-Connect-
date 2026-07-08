@@ -58,7 +58,6 @@ Echo Connect is a full-stack, responsive real-time chat application. It features
 | Search Messages | ✅ |
 | Notification Badges | ✅ |
 | One-to-One Video Calling | ✅ |
-| Group Video Calling | ❌ |
 | Mobile Responsive | ✅ |
 | Dark/Light Theme | ✅ |
 

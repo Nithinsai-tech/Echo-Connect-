@@ -193,6 +193,42 @@ export const ChatProvider = ({ children }) => {
     return localStorage.getItem(`pref_high_contrast_${user?._id}`) === 'true';
   });
 
+  // Sync state when switching accounts or user changes
+  useEffect(() => {
+    if (user) {
+      // Stars
+      try {
+        const storedStars = localStorage.getItem(`starred_messages_${user._id}`);
+        setStarredMessages(storedStars ? JSON.parse(storedStars) : []);
+      } catch (e) {
+        setStarredMessages([]);
+      }
+      // Blocked
+      try {
+        const storedBlocked = localStorage.getItem(`pref_blocked_users_${user._id}`);
+        setBlockedUsers(storedBlocked ? JSON.parse(storedBlocked) : []);
+      } catch (e) {
+        setBlockedUsers([]);
+      }
+      // Preferences
+      setAccentColor(localStorage.getItem(`pref_accent_color_${user._id}`) || '#FF6A00');
+      setChatBubbleColor(localStorage.getItem(`pref_bubble_color_${user._id}`) || '#16A34A');
+      setChatIncomingBubbleColor(localStorage.getItem(`pref_incoming_bubble_color_${user._id}`) || 'light-gray');
+      setChatWallpaper(localStorage.getItem(`pref_chat_wallpaper_${user._id}`) || 'default');
+      setChatTextSize(localStorage.getItem(`pref_chat_text_size_${user._id}`) || 'medium');
+      setHighContrast(localStorage.getItem(`pref_high_contrast_${user._id}`) === 'true');
+    } else {
+      setStarredMessages([]);
+      setBlockedUsers([]);
+      setAccentColor('#FF6A00');
+      setChatBubbleColor('#16A34A');
+      setChatIncomingBubbleColor('light-gray');
+      setChatWallpaper('default');
+      setChatTextSize('medium');
+      setHighContrast(false);
+    }
+  }, [user]);
+
   const getHoverColor = (hex) => {
     const mapping = {
       '#FF6A00': '#FF8A00', // Orange
@@ -741,13 +777,18 @@ export const ChatProvider = ({ children }) => {
   };
 
   // 13.3. Star / Unstar Message
-  const toggleStarMessage = (message) => {
+  const toggleStarMessage = (msgOrId) => {
+    const msg = typeof msgOrId === 'string' 
+      ? rawMessages.find(m => m._id === msgOrId) 
+      : msgOrId;
+    if (!msg) return;
+
     setStarredMessages(prev => {
-      const exists = prev.some(m => m._id === message._id);
+      const exists = prev.some(m => m._id === msg._id);
       if (exists) {
-        return prev.filter(m => m._id !== message._id);
+        return prev.filter(m => m._id !== msg._id);
       } else {
-        return [...prev, message];
+        return [...prev, msg];
       }
     });
   };
