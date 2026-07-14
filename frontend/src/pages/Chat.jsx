@@ -118,7 +118,7 @@ const Chat = () => {
           }`}
           style={{ borderColor: 'var(--border)' }}
         >
-          <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onNewChat={() => handleOpenNewChat('private')} onOpenSettings={() => setIsProfileOpen(true)} />
+          <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onNewChat={() => handleOpenNewChat('private')} onOpenSettings={() => setIsProfileOpen(true)} onLogout={logout} />
         </div>
 
         {/* Right Panel: ChatWindow */}

@@ -438,6 +438,17 @@ const initSocket = (io) => {
             offer
           });
         });
+      } else {
+        // Target is offline! Store call as missed.
+        saveCallLog(session, 'missed', 0);
+        activeCallSessions.delete(userId);
+        activeCallSessions.delete(targetUserId);
+        
+        // Notify the caller socket that the receiver is offline
+        socket.emit('call:rejected', {
+          responderId: targetUserId,
+          reason: 'offline'
+        });
       }
     });
 

@@ -141,8 +141,8 @@ const RoomItem = memo(({ room, isActive, user, typingUsers, selectRoom, getRoomM
 
 RoomItem.displayName = 'RoomItem';
 
-const Sidebar = ({ onNewChat, onOpenSettings }) => {
-  const { user, logout } = useAuth();
+const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout }) => {
+  const { user } = useAuth();
   const {
     rooms,
     activeRoom,
@@ -165,7 +165,6 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('All');
 
   useEffect(() => {
     const handleCycleTabs = () => {
@@ -179,7 +178,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
     return () => {
       window.removeEventListener('cycle-sidebar-tabs', handleCycleTabs);
     };
-  }, []);
+  }, [setActiveTab]);
 
   const getRoomMeta = (room) => {
     if (!room || !room.participants) {
@@ -724,6 +723,13 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         >
           <Users className="h-4 w-4" />
           <span className="text-[10px] font-semibold">People</span>
+        </button>
+        <button 
+          onClick={onLogout}
+          className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-red-500 cursor-pointer text-red-500 hover:text-red-650"
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="text-[10px] font-semibold">Sign Out</span>
         </button>
       </div>
 

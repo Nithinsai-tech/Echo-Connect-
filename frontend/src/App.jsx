@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { ChatProvider } from './context/ChatContext';
+import { CallProvider } from './context/CallContext';
 import { ToastProvider } from './context/ToastContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -20,28 +21,30 @@ function App() {
         <SocketProvider>
           <ToastProvider>
             <ChatProvider>
-              <Routes>
-                {/* Redirect root to /chat */}
-                <Route path="/" element={<Navigate to="/chat" replace />} />
+              <CallProvider>
+                <Routes>
+                  {/* Redirect root to /chat */}
+                  <Route path="/" element={<Navigate to="/chat" replace />} />
 
-                {/* Private Chat Route */}
-                <Route 
-                  path="/chat" 
-                  element={
-                    <ProtectedRoute>
-                      <Chat />
-                    </ProtectedRoute>
-                  } 
-                />
-                
-                {/* Public Auth Routes */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/auth/callback" element={<AuthCallback />} />
-                
-                {/* Redirect any other path to /chat */}
-                <Route path="*" element={<Navigate to="/chat" replace />} />
-              </Routes>
+                  {/* Private Chat Route */}
+                  <Route 
+                    path="/chat" 
+                    element={
+                      <ProtectedRoute>
+                        <Chat />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  
+                  {/* Public Auth Routes */}
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/auth/callback" element={<AuthCallback />} />
+                  
+                  {/* Redirect any other path to /chat */}
+                  <Route path="*" element={<Navigate to="/chat" replace />} />
+                </Routes>
+              </CallProvider>
             </ChatProvider>
           </ToastProvider>
         </SocketProvider>

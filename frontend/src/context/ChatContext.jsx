@@ -1478,6 +1478,7 @@ export const ChatProvider = ({ children }) => {
 
       // Synchronize all room previews, lastMessages, and unread counts upon reconnection
       fetchRooms().catch(err => console.error('Error fetching rooms on reconnect:', err));
+      fetchCalls().catch(err => console.error('Error fetching calls on reconnect:', err));
 
       const currentActiveRoom = activeRoomRef.current;
       if (currentActiveRoom) {
