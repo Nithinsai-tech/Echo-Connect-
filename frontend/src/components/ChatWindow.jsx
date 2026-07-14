@@ -574,6 +574,9 @@ const ChatWindow = () => {
 
   // Emojis & Stickers Picker state
   const pickerRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [activePickerTab, setActivePickerTab] = useState('emojis');
 
