@@ -238,12 +238,12 @@ async function run() {
       const requestGone = !(await pageB.getByText('Incoming Friend Requests').isVisible().catch(() => false));
 
       await pageA.bringToFront();
-      await pageA.getByRole('button', { name: 'All' }).click();
+      await pageA.getByRole('button', { name: 'All', exact: true }).click();
       await pageA.waitForTimeout(2000);
       const aContact = await pageA.getByText(userB.name).first().isVisible({ timeout: 15000 });
 
       await pageB.bringToFront();
-      await pageB.getByRole('button', { name: 'All' }).click();
+      await pageB.getByRole('button', { name: 'All', exact: true }).click();
       const bContact = await pageB.getByText(userA.name).first().isVisible({ timeout: 15000 });
 
       const pass = requestGone && aContact && bContact;
