@@ -306,7 +306,7 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
           </button>
 
           <button
-            onClick={logout}
+            onClick={onLogout}
             className="hidden md:inline-flex p-1.5 rounded-lg transition"
             style={{ color: '#EF4444' }}
             title="Log Out"
