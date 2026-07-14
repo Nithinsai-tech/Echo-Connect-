@@ -13,7 +13,10 @@ import {
   Plus,
   Users,
   Check,
-  Phone
+  Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  PhoneMissed
 } from 'lucide-react';
 import NewChatModal from './NewChatModal';
 import ThemeToggle from './ThemeToggle';
@@ -149,8 +152,17 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
     users,
     friendRequests,
     acceptRequest,
-    declineRequest
+    declineRequest,
+    calls,
+    createDM
   } = useChat();
+
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return '0s';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('All');
@@ -270,7 +282,7 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         {/* Right icons */}
         <div className="flex items-center gap-1">
           <button
-            className="hidden md:inline-flex p-1.5 rounded-lg transition"
+            className="p-1.5 rounded-lg transition"
             style={{ color: '#9090A8' }}
             title="Notifications"
             aria-label="Notifications"
@@ -337,34 +349,36 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
       </div>
 
       {/* TABS */}
-      <div className="flex gap-1 mx-3.5 mb-2">
-        {['All', 'Unread', 'Groups', 'Requests'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition"
-            style={{
-              backgroundColor: activeTab === tab ? '#FF6A00' : 'transparent',
-              color: activeTab === tab ? '#FFFFFF' : 'var(--text-secondary)'
-            }}
-            onMouseEnter={(e) => {
-              if (activeTab !== tab)
-                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-            }}
-            onMouseLeave={(e) => {
-              if (activeTab !== tab)
-                e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span>{tab}</span>
-            {tab === 'Requests' && friendRequests?.incoming?.length > 0 && (
-              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shrink-0">
-                {friendRequests.incoming.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {activeTab !== 'Calls' && (
+        <div className="flex gap-1 mx-3.5 mb-2">
+          {['All', 'Unread', 'Groups', 'Requests'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition"
+              style={{
+                backgroundColor: activeTab === tab ? '#FF6A00' : 'transparent',
+                color: activeTab === tab ? '#FFFFFF' : 'var(--text-secondary)'
+              }}
+              onMouseEnter={(e) => {
+                if (activeTab !== tab)
+                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                if (activeTab !== tab)
+                  e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <span>{tab}</span>
+              {tab === 'Requests' && friendRequests?.incoming?.length > 0 && (
+                <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shrink-0">
+                  {friendRequests.incoming.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* NEW CHAT BUTTON */}
       <div className="mx-3.5 mb-2">
@@ -385,7 +399,85 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         className="flex-1 overflow-y-auto"
         style={{ borderTop: '1px solid var(--border)' }}
       >
-        {activeTab === 'Requests' ? (
+        {activeTab === 'Calls' ? (
+          <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+            <div 
+              className="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b"
+              style={{ color: '#FF6A00', backgroundColor: 'var(--bg-hover)', borderColor: 'var(--border)' }}
+            >
+              Call History ({calls?.length || 0})
+            </div>
+            {(!calls || calls.length === 0) ? (
+              <div className="flex flex-col items-center justify-center p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                No calls yet.
+              </div>
+            ) : (
+              calls.map(call => {
+                const isCaller = call.caller?._id === user?._id;
+                const partner = isCaller ? call.receiver : call.caller;
+                if (!partner) return null;
+
+                let iconColor = '#FF6A00';
+                let StatusIcon = PhoneOutgoing;
+                let statusLabel = '';
+
+                if (call.status === 'completed') {
+                  StatusIcon = isCaller ? PhoneOutgoing : PhoneIncoming;
+                  iconColor = '#16A34A'; // green
+                  statusLabel = isCaller ? 'Outgoing' : 'Incoming';
+                } else if (call.status === 'missed') {
+                  StatusIcon = PhoneMissed;
+                  iconColor = '#DC2626'; // red
+                  statusLabel = isCaller ? 'Canceled' : 'Missed';
+                } else if (call.status === 'rejected') {
+                  StatusIcon = PhoneMissed;
+                  iconColor = '#DC2626'; // red
+                  statusLabel = 'Rejected';
+                }
+
+                return (
+                  <div 
+                    key={call._id} 
+                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-850/20 transition cursor-pointer"
+                    onClick={() => {
+                      if (partner._id) {
+                        createDM(partner._id);
+                        setActiveTab('All'); // switch back to Chats
+                      }
+                    }}
+                  >
+                    <div className="flex items-center min-w-0 mr-2">
+                      <div className="relative mr-3 h-9 w-9 shrink-0">
+                        {partner.avatar ? (
+                          <img src={partner.avatar} alt={partner.name} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center rounded-full text-xs font-bold uppercase text-white" style={{ backgroundColor: getInitialsBg(partner.name || '') }}>
+                            {getInitials(partner.name || '')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{partner.name}</span>
+                        <span className="text-xs truncate flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                          <StatusIcon size={12} style={{ color: iconColor }} />
+                          <span>{statusLabel} • {call.type === 'video' ? 'Video' : 'Voice'}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end shrink-0 text-right">
+                      <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{formatChatTime(call.createdAt)}</span>
+                      {call.status === 'completed' && (
+                        <span className="text-[10px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                          {formatDuration(call.duration)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : activeTab === 'Requests' ? (
           <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
             {/* Incoming Requests */}
             {friendRequests?.incoming?.length > 0 && (
@@ -612,15 +704,15 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         <button 
           onClick={() => setActiveTab('All')}
           className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-[#FF6A00] cursor-pointer"
-          style={{ color: activeTab === 'All' ? '#FF6A00' : '#9090A8' }}
+          style={{ color: (activeTab !== 'Calls' && activeTab !== 'Requests') ? '#FF6A00' : '#9090A8' }}
         >
           <MessageSquare className="h-4 w-4" />
           <span className="text-[10px] font-semibold">Chats</span>
         </button>
         <button 
-          onClick={() => alert('Voice & Video calls list is coming soon!')}
+          onClick={() => setActiveTab('Calls')}
           className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-[#FF6A00] cursor-pointer"
-          style={{ color: '#9090A8' }}
+          style={{ color: activeTab === 'Calls' ? '#FF6A00' : '#9090A8' }}
         >
           <Phone className="h-4 w-4" />
           <span className="text-[10px] font-semibold">Calls</span>
@@ -632,17 +724,6 @@ const Sidebar = ({ onNewChat, onOpenSettings }) => {
         >
           <Users className="h-4 w-4" />
           <span className="text-[10px] font-semibold">People</span>
-        </button>
-        
-        <div className="w-px h-6 bg-gray-300 dark:bg-gray-700" />
-        
-        <button 
-          onClick={onOpenSettings}
-          className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none transition-colors duration-150 hover:text-[#FF6A00] cursor-pointer"
-          style={{ color: '#9090A8' }}
-        >
-          <Settings className="h-4 w-4" />
-          <span className="text-[10px] font-semibold">Settings</span>
         </button>
       </div>
 

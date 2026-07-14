@@ -17,6 +17,7 @@ const messageSpecificRoutes = require('./routes/messageSpecific');
 const userRoutes = require('./routes/users');
 const uploadRoutes = require('./routes/uploads');
 const contactRoutes = require('./routes/contacts');
+const callRoutes = require('./routes/calls');
 
 const app = express();
 app.set("trust proxy", 1);
@@ -56,6 +57,7 @@ app.use('/api/messages', messageSpecificRoutes); // Individual message operation
 app.use('/api/users', userRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/calls', callRoutes);
 
 // Base Health Check endpoint
 app.get('/health', (req, res) => {

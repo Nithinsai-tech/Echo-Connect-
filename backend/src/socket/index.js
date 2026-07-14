@@ -3,6 +3,10 @@ const User = require('../models/User');
 const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const { onlineUsers } = require('../services/presence');
+const CallLog = require('../models/CallLog');
+const mongoose = require('mongoose');
+
+const activeCallSessions = new Map(); // key: userId, value: call session info
 
 const initSocket = (io) => {
   // 1. Socket.IO Handshake Authentication Middleware
@@ -349,8 +353,79 @@ const initSocket = (io) => {
     // ==========================================
     // WebRTC Calling Signaling Events
     // ==========================================
+    const saveCallLog = async (session, finalStatus, duration = 0) => {
+      try {
+        // 1. Create CallLog entry
+        await CallLog.create({
+          caller: session.callerId,
+          receiver: session.receiverId,
+          type: session.type,
+          status: finalStatus,
+          duration,
+          roomId: session.roomId
+        });
+
+        // 2. Create Message entry in ChatRoom so it shows in preview and chat window
+        const systemContent = JSON.stringify({
+          _echoType: 'call',
+          callStatus: finalStatus,
+          callType: session.type,
+          duration
+        });
+
+        // Create system message
+        const messageId = new mongoose.Types.ObjectId();
+        await Message.create({
+          _id: messageId,
+          roomId: session.roomId,
+          senderId: session.callerId,
+          content: systemContent,
+          type: 'text',
+          status: 'sent',
+          seenBy: [session.callerId]
+        });
+
+        await ChatRoom.findByIdAndUpdate(session.roomId, { lastMessage: messageId });
+
+        // Get populated sender info
+        const senderInfo = await User.findById(session.callerId).select('name email avatar');
+
+        // Notify room of the new call log message
+        io.to(session.roomId.toString()).emit('message:receive', {
+          _id: messageId,
+          roomId: session.roomId,
+          senderId: senderInfo,
+          content: systemContent,
+          type: 'text',
+          status: 'sent',
+          seenBy: [session.callerId],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+        // Also emit a global socket event to update call history live on both clients
+        io.to(`user_${session.callerId}`).emit('call:logged', { success: true });
+        io.to(`user_${session.receiverId}`).emit('call:logged', { success: true });
+
+      } catch (err) {
+        console.error('Error saving call log:', err);
+      }
+    };
+
     socket.on('call:initiate', (data) => {
       const { roomId, targetUserId, type, offer } = data;
+      
+      const session = {
+        callerId: userId,
+        receiverId: targetUserId,
+        type,
+        roomId,
+        status: 'ringing',
+        startTime: Date.now()
+      };
+      activeCallSessions.set(userId, session);
+      activeCallSessions.set(targetUserId, session);
+
       const targetSockets = onlineUsers.get(targetUserId);
       if (targetSockets && targetSockets.size > 0) {
         targetSockets.forEach(sid => {
@@ -368,6 +443,13 @@ const initSocket = (io) => {
 
     socket.on('call:answer', (data) => {
       const { callerId, answer } = data;
+      
+      const session = activeCallSessions.get(userId);
+      if (session) {
+        session.status = 'connected';
+        session.startTime = Date.now();
+      }
+
       const callerSockets = onlineUsers.get(callerId);
       if (callerSockets && callerSockets.size > 0) {
         callerSockets.forEach(sid => {
@@ -381,6 +463,14 @@ const initSocket = (io) => {
 
     socket.on('call:reject', (data) => {
       const { callerId } = data;
+      
+      const session = activeCallSessions.get(userId);
+      if (session) {
+        saveCallLog(session, 'rejected', 0);
+        activeCallSessions.delete(session.callerId);
+        activeCallSessions.delete(session.receiverId);
+      }
+
       const callerSockets = onlineUsers.get(callerId);
       if (callerSockets && callerSockets.size > 0) {
         callerSockets.forEach(sid => {
@@ -406,6 +496,19 @@ const initSocket = (io) => {
 
     socket.on('call:end', (data) => {
       const { targetUserId } = data;
+      
+      const session = activeCallSessions.get(userId);
+      if (session) {
+        if (session.status === 'ringing') {
+          saveCallLog(session, 'missed', 0);
+        } else if (session.status === 'connected') {
+          const duration = Math.floor((Date.now() - session.startTime) / 1000);
+          saveCallLog(session, 'completed', duration);
+        }
+        activeCallSessions.delete(session.callerId);
+        activeCallSessions.delete(session.receiverId);
+      }
+
       const targetSockets = onlineUsers.get(targetUserId);
       if (targetSockets && targetSockets.size > 0) {
         targetSockets.forEach(sid => {
@@ -419,6 +522,30 @@ const initSocket = (io) => {
     // H. Event: Disconnect
     socket.on('disconnect', async () => {
       console.log(`Socket disconnected: ${socket.id}`);
+
+      // Check if user was in an active call session
+      const session = activeCallSessions.get(userId);
+      if (session) {
+        const targetUserId = session.callerId === userId ? session.receiverId : session.callerId;
+        
+        if (session.status === 'ringing') {
+          saveCallLog(session, 'missed', 0);
+        } else if (session.status === 'connected') {
+          const duration = Math.floor((Date.now() - session.startTime) / 1000);
+          saveCallLog(session, 'completed', duration);
+        }
+        
+        activeCallSessions.delete(session.callerId);
+        activeCallSessions.delete(session.receiverId);
+        
+        // Notify the target user
+        const targetSockets = onlineUsers.get(targetUserId);
+        if (targetSockets && targetSockets.size > 0) {
+          targetSockets.forEach(sid => {
+            io.to(sid).emit('call:ended', { senderId: userId });
+          });
+        }
+      }
 
       const userSockets = onlineUsers.get(userId);
       if (userSockets) {

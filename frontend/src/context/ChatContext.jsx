@@ -18,7 +18,8 @@ import {
   sendFriendRequest,
   getFriendRequests,
   acceptFriendRequest,
-  declineFriendRequest
+  declineFriendRequest,
+  getCalls
 } from '../api';
 
 // Helper to resolve reactions, replies, pins and deletes in a single linear pass
@@ -149,6 +150,26 @@ export const ChatProvider = ({ children }) => {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [nextCursor, setNextCursor] = useState(null);
+  const [calls, setCalls] = useState([]);
+
+  // Client-side deduplication helper to ensure no duplicate private rooms are rendered
+  const deduplicateRooms = useCallback((roomsList) => {
+    const seen = new Set();
+    return roomsList.filter(room => {
+      if (room.type === 'private') {
+        const key = room.participants
+          .map(p => (typeof p === 'object' && p !== null ? p._id || p : p).toString())
+          .sort()
+          .join('-');
+        if (seen.has(key)) return false;
+        seen.add(key);
+      } else {
+        if (seen.has(room._id)) return false;
+        seen.add(room._id);
+      }
+      return true;
+    });
+  }, []);
 
   // Local storage for starred messages
   const [starredMessages, setStarredMessages] = useState(() => {
@@ -402,7 +423,7 @@ export const ChatProvider = ({ children }) => {
                 isOnline: onlineUsersRef.current.has(p._id.toString())
               }))
             }));
-            setRooms(updatedRooms);
+            setRooms(deduplicateRooms(updatedRooms));
           }
         }),
         getAllUsers().then(response => {
@@ -420,6 +441,11 @@ export const ChatProvider = ({ children }) => {
               incoming: response.incoming || [],
               outgoing: response.outgoing || []
             });
+          }
+        }),
+        getCalls().then(response => {
+          if (response.success) {
+            setCalls(response.data);
           }
         })
       ]);
@@ -443,7 +469,7 @@ export const ChatProvider = ({ children }) => {
     } catch (err) {
       console.error('Background synchronization failed:', err);
     }
-  }, [user, socket]);
+  }, [user, socket, deduplicateRooms]);
 
   useEffect(() => {
     if (!user) return;
@@ -527,7 +553,7 @@ export const ChatProvider = ({ children }) => {
           }));
           return { ...room, participants: updatedParticipants };
         });
-        setRooms(updatedRooms);
+        setRooms(deduplicateRooms(updatedRooms));
 
         // Proactively emit delivered status for unread messages sent by others
         if (socket && socket.connected) {
@@ -548,7 +574,7 @@ export const ChatProvider = ({ children }) => {
     } finally {
       setLoadingRooms(false);
     }
-  }, [user, socket]);
+  }, [user, socket, deduplicateRooms]);
 
   // 2. Fetch User Directory
   const fetchUsers = useCallback(async () => {
@@ -639,14 +665,28 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
+  const fetchCalls = useCallback(async () => {
+    if (!user) return;
+    try {
+      const response = await getCalls();
+      if (response.success) {
+        setCalls(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching calls:', err.message);
+    }
+  }, [user]);
+
   // Load directories when user state changes
   useEffect(() => {
     if (user) {
       fetchRooms();
       fetchUsers();
       fetchFriendRequests();
+      fetchCalls();
     } else {
       setRooms([]);
+      setCalls([]);
       setActiveRoom(null);
       setRawMessages([]);
       setUsers([]);
@@ -660,7 +700,7 @@ export const ChatProvider = ({ children }) => {
       setToast(null);
       setApiError(null);
     }
-  }, [user, fetchRooms, fetchUsers, fetchFriendRequests]);
+  }, [user, fetchRooms, fetchUsers, fetchFriendRequests, fetchCalls]);
 
   // 3. Fetch messages for active room
   const fetchMessages = async (roomId, cursor = null, isBackground = false) => {
@@ -1247,7 +1287,7 @@ export const ChatProvider = ({ children }) => {
           updatedAt: new Date().toISOString()
         };
 
-        return updatedRooms.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        return deduplicateRooms(updatedRooms).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       });
 
       // Send delivered receipt if message is newly received and sent by others
@@ -1504,6 +1544,10 @@ export const ChatProvider = ({ children }) => {
       }));
     };
 
+    const handleCallLogged = () => {
+      fetchCalls();
+    };
+
     // Bind event hooks
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -1525,6 +1569,7 @@ export const ChatProvider = ({ children }) => {
     socket.on('friend_request:sent', handleFriendRequestSent);
     socket.on('friend_request:accepted', handleFriendRequestAccepted);
     socket.on('friend_request:declined', handleFriendRequestDeclined);
+    socket.on('call:logged', handleCallLogged);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -1547,11 +1592,12 @@ export const ChatProvider = ({ children }) => {
       socket.off('friend_request:sent', handleFriendRequestSent);
       socket.off('friend_request:accepted', handleFriendRequestAccepted);
       socket.off('friend_request:declined', handleFriendRequestDeclined);
+      socket.off('call:logged', handleCallLogged);
 
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       if (apiErrorTimeoutRef.current) clearTimeout(apiErrorTimeoutRef.current);
     };
-  }, [socket, user, fetchRooms]);
+  }, [socket, user, fetchRooms, fetchCalls]);
 
   const toggleReadReceipts = () => {
     setReadReceipts(prev => {
@@ -1669,6 +1715,8 @@ export const ChatProvider = ({ children }) => {
       sendRequest,
       acceptRequest,
       declineRequest,
+      calls,
+      fetchCalls,
 
       // Phase 4 Settings & Personalization Exports
       readReceipts,

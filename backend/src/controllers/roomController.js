@@ -3,6 +3,8 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const { isValidObjectId } = require('../utils/validationHelper');
 
+const pendingPrivateRooms = new Set();
+
 // @desc    Create a private DM or Group room
 // @route   POST /api/rooms
 // @access  Private
@@ -25,20 +27,51 @@ const createRoom = async (req, res, next) => {
         });
       }
 
-      // Check if a 1-to-1 room already exists between these two users
-      const existingRoom = await ChatRoom.findOne({
-        type: 'private',
-        participants: { $all: uniqueParticipants, $size: 2 }
-      })
-        .populate('participants', '-password')
-        .populate('lastMessage');
+      const lockKey = uniqueParticipants.sort().join('-');
+      if (pendingPrivateRooms.has(lockKey)) {
+        // Wait up to 1 second for other creation to complete
+        for (let i = 0; i < 10; i++) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          if (!pendingPrivateRooms.has(lockKey)) {
+            const existingRoom = await ChatRoom.findOne({
+              type: 'private',
+              participants: { $all: uniqueParticipants, $size: 2 }
+            })
+              .populate('participants', '-password')
+              .populate('lastMessage');
+            if (existingRoom) {
+              return res.status(200).json({
+                success: true,
+                message: 'Existing chat room retrieved successfully',
+                data: existingRoom
+              });
+            }
+            break;
+          }
+        }
+      }
 
-      if (existingRoom) {
-        return res.status(200).json({
-          success: true,
-          message: 'Existing chat room retrieved successfully',
-          data: existingRoom
-        });
+      pendingPrivateRooms.add(lockKey);
+      try {
+        // Check if a 1-to-1 room already exists between these two users
+        const existingRoom = await ChatRoom.findOne({
+          type: 'private',
+          participants: { $all: uniqueParticipants, $size: 2 }
+        })
+          .populate('participants', '-password')
+          .populate('lastMessage');
+
+        if (existingRoom) {
+          pendingPrivateRooms.delete(lockKey);
+          return res.status(200).json({
+            success: true,
+            message: 'Existing chat room retrieved successfully',
+            data: existingRoom
+          });
+        }
+      } catch (err) {
+        pendingPrivateRooms.delete(lockKey);
+        throw err;
       }
     }
 
@@ -52,6 +85,11 @@ const createRoom = async (req, res, next) => {
     };
 
     const newRoom = await ChatRoom.create(roomPayload);
+    if (type === 'private') {
+      const lockKey = uniqueParticipants.sort().join('-');
+      pendingPrivateRooms.delete(lockKey);
+    }
+
     const populatedRoom = await ChatRoom.findById(newRoom._id)
       .populate('participants', '-password');
 
@@ -94,10 +132,27 @@ const getUserRooms = async (req, res, next) => {
       return roomObj;
     }));
 
+    // Deduplicate private rooms
+    const uniqueRooms = [];
+    const seenPrivateContacts = new Set();
+    for (const room of roomsWithUnread) {
+      if (room.type === 'private') {
+        const otherParticipant = room.participants.find(p => p._id.toString() !== req.user._id.toString());
+        if (otherParticipant) {
+          const contactId = otherParticipant._id.toString();
+          if (seenPrivateContacts.has(contactId)) {
+            continue; // Skip duplicate room for the same contact
+          }
+          seenPrivateContacts.add(contactId);
+        }
+      }
+      uniqueRooms.push(room);
+    }
+
     res.status(200).json({
       success: true,
-      count: roomsWithUnread.length,
-      data: roomsWithUnread
+      count: uniqueRooms.length,
+      data: uniqueRooms
     });
   } catch (error) {
     next(error);

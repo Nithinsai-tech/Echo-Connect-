@@ -7,7 +7,7 @@ import ProfileDrawer from '../components/ProfileDrawer';
 import { useChat } from '../hooks/useChat';
 import { useAuth } from '../hooks/useAuth';
 import { getInitials } from '../utils/getInitials';
-import { Loader2, X, MessageSquare, Phone, Users, LogOut } from 'lucide-react';
+import { Loader2, X, MessageSquare, Phone, Users, LogOut, Settings } from 'lucide-react';
 
 const Chat = () => {
   const { logout } = useAuth();
@@ -22,7 +22,7 @@ const Chat = () => {
     rooms 
   } = useChat();
 
-  const [mobileTab, setMobileTab] = useState('chats');
+  const [activeTab, setActiveTab] = useState('All');
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [newChatModalStep, setNewChatModalStep] = useState('private');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -118,7 +118,7 @@ const Chat = () => {
           }`}
           style={{ borderColor: 'var(--border)' }}
         >
-          <Sidebar onNewChat={() => handleOpenNewChat('private')} onOpenSettings={() => setIsProfileOpen(true)} />
+          <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onNewChat={() => handleOpenNewChat('private')} onOpenSettings={() => setIsProfileOpen(true)} />
         </div>
 
         {/* Right Panel: ChatWindow */}
@@ -153,34 +153,28 @@ const Chat = () => {
           }}
         >
           <button 
-            onClick={() => setMobileTab('chats')} 
+            onClick={() => setActiveTab('All')} 
             className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
-            style={{ color: mobileTab === 'chats' ? '#FF6A00' : '#9090A8' }}
+            style={{ color: (activeTab !== 'Calls' && activeTab !== 'Requests') ? '#FF6A00' : '#9090A8' }}
           >
             <MessageSquare className="h-5 w-5" />
             <span className="text-[10px] font-semibold">Chats</span>
           </button>
           <button 
-            onClick={() => {
-              setMobileTab('calls');
-              alert('Voice & Video calls list is coming soon!');
-            }}
+            onClick={() => setActiveTab('Calls')}
             className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
-            style={{ color: mobileTab === 'calls' ? '#FF6A00' : '#9090A8' }}
+            style={{ color: activeTab === 'Calls' ? '#FF6A00' : '#9090A8' }}
           >
             <Phone className="h-5 w-5" />
             <span className="text-[10px] font-semibold">Calls</span>
           </button>
           <button 
-            onClick={() => {
-              setMobileTab('people');
-              alert('Search & discover new friends feature is coming soon!');
-            }}
+            onClick={() => setIsProfileOpen(true)}
             className="flex flex-col items-center justify-center gap-1 bg-transparent border-none outline-none"
-            style={{ color: mobileTab === 'people' ? '#FF6A00' : '#9090A8' }}
+            style={{ color: isProfileOpen ? '#FF6A00' : '#9090A8' }}
           >
-            <Users className="h-5 w-5" />
-            <span className="text-[10px] font-semibold">People</span>
+            <Settings className="h-5 w-5" />
+            <span className="text-[10px] font-semibold">Settings</span>
           </button>
           <button 
             onClick={logout}
