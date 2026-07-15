@@ -19,7 +19,13 @@ Echo Connect is a full-stack, responsive real-time chat application. It features
 * **Persistent Chat History**: Core message streams, participant arrays, and conversation logs are indexed and stored securely in **MongoDB Atlas**.
 * **Secure JWT Session Control**: JWT authentication with refresh token rotation using in-memory `accessToken` and cookie-less `refreshToken` storage with Axios authorization interceptors.
 * **Google OAuth 2.0 Integration**: Built-in Google Passport strategy for hassle-free authentication, auto-creating user profiles, and linking with local credentials.
-* **One-to-One WebRTC Audio & Video Calling**: Complete peer-to-peer audio and video calling with signaling pipelines built directly into the Socket.IO server.
+* **One-to-One WebRTC Audio & Video Calling**: Complete peer-to-peer audio and video calling with signaling pipelines built directly into the Socket.IO server. Features include:
+  * **Global UI Overlay**: Full-screen call portal independent of routes, rendering anywhere inside the app.
+  * **FaceTime-like PIP Layout**: Custom swappable local/remote video layout with auto-hiding interactive overlay controls.
+  * **Advanced Media Constraints**: Configured with echo cancellation, noise suppression, and automatic gain control.
+  * **Speaker & Mute Controls**: In-call hardware mute/camera toggling and speaker output selection via `setSinkId`.
+  * **ICE Reconnection**: Resilient WebRTC recovery that restarts negotiations automatically on network transitions.
+* **Persistent Call History & History Logs**: Tracks calling records, durations, timestamps, and statuses (Completed, Missed, Rejected) securely in the database, updating both participants instantly.
 * **Message Controls**: Timeline utilities including:
   * Message Star/Favorite logs (persisted locally)
   * Direct replies and forwards across rooms
@@ -58,6 +64,10 @@ Echo Connect is a full-stack, responsive real-time chat application. It features
 | Search Messages | ✅ |
 | Notification Badges | ✅ |
 | One-to-One Video Calling | ✅ |
+| Global Call Portal Overlay | ✅ |
+| Audio Output Speaker Routing | ✅ |
+| ICE Connection Auto-Restart | ✅ |
+| Call Logs & Offline Missed Calls | ✅ |
 | Mobile Responsive | ✅ |
 | Dark/Light Theme | ✅ |
 
@@ -260,6 +270,8 @@ To test event synchronization locally using Redis:
 | **`call:reject`** | `{ callerId }` | Reject incoming WebRTC call |
 | **`call:candidate`** | `{ targetUserId, candidate }` | Share ICE Candidate signaling |
 | **`call:end`** | `{ targetUserId }` | Terminate active WebRTC session |
+| **`call:toggle-video`** | `{ targetUserId, videoEnabled }` | Sync camera track state to remote participant |
+| **`call:ice-restart`** | `{ targetUserId }` | Re-negotiate peer connection on network path drop |
 
 ---
 
@@ -272,3 +284,17 @@ npm install
 node test_suite.js
 ```
 The suite verifies REST APIs, JWT authentication, typing status indicators, message delivery receipts, read receipts, cursor-based pagination, and message deletions.
+
+### 🎭 Playwright End-to-End Test Suite
+
+A complete browser automation suite exists at `e2e/contact-friend-validation.mjs` to run real-world testing of:
+* Profile registration & search filters.
+* Live friend requests & badges.
+* WebSocket real-time messaging delivery.
+* Persistent database check after reload.
+* Full WebRTC peer connection, media streaming, and call teardown.
+
+To run the Playwright E2E suite locally:
+```bash
+node e2e/contact-friend-validation.mjs
+```
