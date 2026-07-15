@@ -379,7 +379,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 e.preventDefault();
                 onContextMenu(e, msg._id, isSelf);
               }}
-              className={`absolute top-1 right-1 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 ${
+              className={`absolute top-1 right-1 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${
                 isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
               }`}
               title="Message Actions"
@@ -447,7 +447,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 e.preventDefault();
                 onContextMenu(e, msg._id, isSelf);
               }}
-              className={`absolute top-0 -right-4 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 ${
+              className={`absolute top-0 -right-4 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${
                 isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
               }`}
               title="Message Actions"
@@ -558,7 +558,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
               e.preventDefault();
               onContextMenu(e, msg._id, isSelf);
             }}
-            className={`absolute top-1.5 right-1.5 p-1 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 ${
+            className={`absolute top-1.5 right-1.5 p-1 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${
               isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
             title="Message Actions"
@@ -999,6 +999,52 @@ const ChatWindow = () => {
     y: 0,
     messageId: null
   });
+  const contextMenuRef = useRef(null);
+
+  // Smart context menu positioning & prevent scrolling when open
+  useEffect(() => {
+    if (contextMenu.visible && contextMenuRef.current) {
+      const menu = contextMenuRef.current;
+      const rect = menu.getBoundingClientRect();
+      const width = rect.width || 220;
+      const height = rect.height || 320;
+      
+      let newX = contextMenu.x;
+      let newY = contextMenu.y;
+
+      if (contextMenu.y + height > window.innerHeight) {
+        newY = Math.max(10, contextMenu.y - height);
+      }
+      
+      if (contextMenu.x + width > window.innerWidth) {
+        newX = Math.max(10, window.innerWidth - width - 10);
+      }
+      
+      menu.style.top = `${newY}px`;
+      menu.style.left = `${newX}px`;
+    }
+  }, [contextMenu.visible, contextMenu.x, contextMenu.y]);
+
+  useEffect(() => {
+    if (contextMenu.visible) {
+      const preventDefault = (e) => {
+        if (contextMenuRef.current && contextMenuRef.current.contains(e.target)) {
+          return;
+        }
+        e.preventDefault();
+      };
+      window.addEventListener('wheel', preventDefault, { passive: false });
+      window.addEventListener('touchmove', preventDefault, { passive: false });
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        window.removeEventListener('wheel', preventDefault);
+        window.removeEventListener('touchmove', preventDefault);
+        document.body.style.overflow = '';
+      };
+    }
+  }, [contextMenu.visible]);
+
   // Virtualization List elements
   const listRef = useRef(null);
   const containerRef = useRef(null);
@@ -1090,7 +1136,10 @@ const ChatWindow = () => {
   };
 
   useEffect(() => {
-    const handleGlobalClick = () => {
+    const handleGlobalClick = (e) => {
+      if (e && e.target && e.target.closest('.msg-bubble-chevron')) {
+        return;
+      }
       closeContextMenu();
       closeOptionsMenu();
     };
@@ -2229,6 +2278,7 @@ const ChatWindow = () => {
       {/* 7. CONTEXT MENU */}
       {contextMenu.visible && contextMenu.msg && (
         <div
+          ref={contextMenuRef}
           style={{ top: contextMenu.y, left: contextMenu.x }}
           className="fixed z-50 min-w-[200px] rounded-xl bg-[var(--bg-panel)]/95 border border-[var(--border)] py-1.5 shadow-2xl backdrop-blur-md text-[var(--text-primary)] overflow-hidden"
         >
