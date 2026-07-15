@@ -507,8 +507,6 @@ export const CallProvider = ({ children }) => {
       peerConnectionRef.current.close();
     }
 
-    iceCandidatesQueueRef.current = [];
-
     let iceServers = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -524,40 +522,55 @@ export const CallProvider = ({ children }) => {
           iceServers = parsed;
         }
       } catch (err) {
-        console.warn('Failed to parse VITE_ICE_SERVERS:', err);
+        console.warn('[WebRTC-Audit] Failed to parse VITE_ICE_SERVERS:', err);
       }
     }
 
+    console.log('[WebRTC-Audit] Initializing RTCPeerConnection with iceServers:', iceServers);
     const pc = new RTCPeerConnection({ iceServers });
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit('call:candidate', {
-          targetUserId,
-          candidate: event.candidate
-        });
+      if (event.candidate) {
+        console.log('[WebRTC-Audit] Local ICE candidate generated:', event.candidate.candidate);
+        if (socket) {
+          socket.emit('call:candidate', {
+            targetUserId,
+            candidate: event.candidate
+          });
+        }
+      } else {
+        console.log('[WebRTC-Audit] ICE candidate gathering complete (null candidate)');
       }
     };
 
     pc.onconnectionstatechange = () => {
-      console.log('WebRTC Connection State changed:', pc.connectionState);
+      console.log('[WebRTC-Audit] Connection State changed:', pc.connectionState);
     };
 
     pc.onsignalingstatechange = () => {
-      console.log('WebRTC Signaling State changed:', pc.signalingState);
+      console.log('[WebRTC-Audit] Signaling State changed:', pc.signalingState);
+    };
+
+    pc.onicegatheringstatechange = () => {
+      console.log('[WebRTC-Audit] ICE Gathering State changed:', pc.iceGatheringState);
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE Connection State changed:', pc.iceConnectionState);
+      console.log('[WebRTC-Audit] ICE Connection State changed:', pc.iceConnectionState);
       if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        console.warn('[WebRTC-Audit] ICE connection failed or disconnected. Initiating ICE restart...');
         handleIceRestart(targetUserId);
       }
     };
 
     pc.ontrack = (event) => {
-      console.log('Received remote track:', event.track.kind);
+      console.log('[WebRTC-Audit] Remote track event fired:', event.track.kind, 'stream count:', event.streams.length);
       const incomingStream = event.streams[0] || new MediaStream([event.track]);
       
+      incomingStream.getTracks().forEach(t => {
+        console.log(`[WebRTC-Audit] Remote Track: kind=${t.kind} id="${t.id}" label="${t.label}" active=${t.active} enabled=${t.enabled} state=${t.readyState} muted=${t.muted}`);
+      });
+
       remoteStreamRef.current = incomingStream;
       
       // Force a new MediaStream instance so React updates dependencies correctly
@@ -670,14 +683,22 @@ export const CallProvider = ({ children }) => {
     setActiveCall({ type: 'voice', status: 'ringing', isCaller: true, targetId: partnerId, targetName: partnerName, targetAvatar: partnerAvatar, roomId, callSessionId: generateUUID() });
     startRingtone();
 
+    console.log('[WebRTC-Audit] Dialing voice call. Resetting ICE candidate queue...');
+    iceCandidatesQueueRef.current = [];
+
     try {
       const pc = createPeerConnection(partnerId, roomId);
       const stream = await getUserMediaStream(false);
       if (stream) {
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+          console.log(`[WebRTC-Audit] Added track "${track.id}" (${track.kind}) to peer connection`);
+        });
       }
 
+      console.log('[WebRTC-Audit] Creating offer for voice call...');
       const offer = await pc.createOffer();
+      console.log('[WebRTC-Audit] Setting local description (offer):', offer.sdp.substring(0, 100) + '...');
       await pc.setLocalDescription(offer);
 
       socket.emit('call:initiate', {
@@ -697,14 +718,22 @@ export const CallProvider = ({ children }) => {
     setActiveCall({ type: 'video', status: 'ringing', isCaller: true, targetId: partnerId, targetName: partnerName, targetAvatar: partnerAvatar, roomId, callSessionId: generateUUID() });
     startRingtone();
 
+    console.log('[WebRTC-Audit] Dialing video call. Resetting ICE candidate queue...');
+    iceCandidatesQueueRef.current = [];
+
     try {
       const pc = createPeerConnection(partnerId, roomId);
       const stream = await getUserMediaStream(true);
       if (stream) {
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+          console.log(`[WebRTC-Audit] Added track "${track.id}" (${track.kind}) to peer connection`);
+        });
       }
 
+      console.log('[WebRTC-Audit] Creating offer for video call...');
       const offer = await pc.createOffer();
+      console.log('[WebRTC-Audit] Setting local description (offer):', offer.sdp.substring(0, 100) + '...');
       await pc.setLocalDescription(offer);
 
       socket.emit('call:initiate', {
@@ -732,21 +761,29 @@ export const CallProvider = ({ children }) => {
       const pc = createPeerConnection(callerId, roomId);
       const stream = await getUserMediaStream(type === 'video');
       if (stream) {
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+          console.log(`[WebRTC-Audit] Added track "${track.id}" (${track.kind}) to peer connection`);
+        });
       }
 
+      console.log('[WebRTC-Audit] Setting remote description (offer) on receiver...');
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
+      console.log(`[WebRTC-Audit] Draining ${iceCandidatesQueueRef.current.length} queued ICE candidates on receiver...`);
       while (iceCandidatesQueueRef.current.length > 0) {
         const cand = iceCandidatesQueueRef.current.shift();
         try {
           await pc.addIceCandidate(new RTCIceCandidate(cand));
+          console.log('[WebRTC-Audit] Successfully added queued ICE candidate');
         } catch (err) {
-          console.error('Error adding queued ICE candidate:', err);
+          console.error('[WebRTC-Audit] Error adding queued ICE candidate:', err);
         }
       }
 
+      console.log('[WebRTC-Audit] Creating answer...');
       const answer = await pc.createAnswer();
+      console.log('[WebRTC-Audit] Setting local description (answer):', answer.sdp.substring(0, 100) + '...');
       await pc.setLocalDescription(answer);
 
       socket.emit('call:answer', {
@@ -982,6 +1019,10 @@ export const CallProvider = ({ children }) => {
         return;
       }
 
+      // Reset candidate queue for the new incoming call session
+      console.log('[WebRTC-Audit] Received incoming call. Resetting ICE candidate queue...');
+      iceCandidatesQueueRef.current = [];
+
       startRingtone();
       setIncomingCall({ roomId, callerId, callerName, callerAvatar, type, offer });
     };
@@ -993,19 +1034,22 @@ export const CallProvider = ({ children }) => {
 
       if (peerConnectionRef.current) {
         try {
+          console.log('[WebRTC-Audit] Setting remote description (answer) on caller...');
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
           setActiveCall(prev => prev ? { ...prev, status: 'connected' } : null);
 
+          console.log(`[WebRTC-Audit] Draining ${iceCandidatesQueueRef.current.length} queued ICE candidates on caller...`);
           while (iceCandidatesQueueRef.current.length > 0) {
             const cand = iceCandidatesQueueRef.current.shift();
             try {
               await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(cand));
+              console.log('[WebRTC-Audit] Successfully added queued ICE candidate');
             } catch (err) {
-              console.error('Error adding queued ICE candidate:', err);
+              console.error('[WebRTC-Audit] Error adding queued ICE candidate:', err);
             }
           }
         } catch (e) {
-          console.error('Error setting remote answer:', e);
+          console.error('[WebRTC-Audit] Error setting remote answer:', e);
         }
       }
     };
@@ -1197,11 +1241,11 @@ export const CallProvider = ({ children }) => {
   // Video Swapping CSS Classes
   const remoteVideoClass = !isSwapped
     ? "absolute inset-0 w-full h-full object-cover z-10 transition-all duration-300"
-    : "absolute bottom-24 right-4 w-28 md:w-44 aspect-[3/4] md:aspect-video rounded-2xl border border-white/20 shadow-2xl overflow-hidden cursor-pointer z-30 transition-all duration-300 hover:scale-105 bg-gray-900";
+    : "absolute bottom-28 md:bottom-24 right-4 w-24 sm:w-28 md:w-44 aspect-[3/4] md:aspect-video rounded-2xl border border-white/20 shadow-2xl overflow-hidden cursor-pointer z-30 transition-all duration-300 hover:scale-105 bg-gray-900";
 
   const localVideoClass = isSwapped
     ? "absolute inset-0 w-full h-full object-cover z-10 transition-all duration-300"
-    : "absolute bottom-24 right-4 w-28 md:w-44 aspect-[3/4] md:aspect-video rounded-2xl border border-white/20 shadow-2xl overflow-hidden cursor-pointer z-30 transition-all duration-300 hover:scale-105 bg-gray-900";
+    : "absolute bottom-28 md:bottom-24 right-4 w-24 sm:w-28 md:w-44 aspect-[3/4] md:aspect-video rounded-2xl border border-white/20 shadow-2xl overflow-hidden cursor-pointer z-30 transition-all duration-300 hover:scale-105 bg-gray-900";
 
   return (
     <CallContext.Provider
@@ -1233,7 +1277,7 @@ export const CallProvider = ({ children }) => {
           ref={callOverlayRef}
           onMouseMove={resetControlsTimeout}
           onClick={resetControlsTimeout}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-between bg-gradient-to-b from-gray-950 via-gray-900 to-gray-955 text-white p-6 font-sans overflow-hidden select-none"
+          className="fixed inset-0 h-[100dvh] w-screen z-50 flex flex-col items-center justify-between bg-gradient-to-b from-gray-950 via-gray-900 to-gray-955 text-white p-6 font-sans overflow-hidden select-none"
         >
           {/* Header overlay */}
           <div className={`w-full flex items-center justify-between opacity-80 mt-4 px-4 z-40 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
@@ -1346,11 +1390,11 @@ export const CallProvider = ({ children }) => {
           )}
 
           {/* Call Controls Bar */}
-          <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 md:gap-6 bg-black/40 px-6 py-4 rounded-3xl backdrop-blur-md border border-white/10 shadow-2xl transition-all duration-300 z-40 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+          <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2.5 sm:gap-4 md:gap-6 bg-black/40 px-3.5 sm:px-6 py-2.5 sm:py-4 rounded-2xl md:rounded-3xl backdrop-blur-md border border-white/10 shadow-2xl transition-all duration-300 z-40 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
             {/* 1. Mic Button */}
             <button
               onClick={handleToggleMute}
-              className={`p-3.5 rounded-full transition-all duration-200 ${
+              className={`p-2.5 sm:p-3.5 rounded-full transition-all duration-200 ${
                 isMuted
                   ? 'bg-red-500/20 text-red-500 border border-red-500/40 hover:bg-red-500/30'
                   : 'bg-white/10 text-white hover:bg-white/20'
@@ -1358,14 +1402,14 @@ export const CallProvider = ({ children }) => {
               title={isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
               aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
-              {isMuted ? <MicOff className="h-5.5 w-5.5" /> : <Mic className="h-5.5 w-5.5" />}
+              {isMuted ? <MicOff className="h-5 sm:h-5.5 w-5 sm:w-5.5" /> : <Mic className="h-5 sm:h-5.5 w-5 sm:w-5.5" />}
             </button>
 
             {/* 2. Camera Button (Video call only) */}
             {activeCall.type === 'video' && (
               <button
                 onClick={handleToggleVideo}
-                className={`p-3.5 rounded-full transition-all duration-200 ${
+                className={`p-2.5 sm:p-3.5 rounded-full transition-all duration-200 ${
                   isVideoOff
                     ? 'bg-red-500/20 text-red-500 border border-red-500/40 hover:bg-red-500/30'
                     : 'bg-white/10 text-white hover:bg-white/20'
@@ -1373,7 +1417,7 @@ export const CallProvider = ({ children }) => {
                 title={isVideoOff ? 'Turn Camera On' : 'Turn Camera Off'}
                 aria-label={isVideoOff ? 'Turn camera on' : 'Turn camera off'}
               >
-                {isVideoOff ? <VideoOff className="h-5.5 w-5.5" /> : <Video className="h-5.5 w-5.5" />}
+                {isVideoOff ? <VideoOff className="h-5 sm:h-5.5 w-5 sm:w-5.5" /> : <Video className="h-5 sm:h-5.5 w-5 sm:w-5.5" />}
               </button>
             )}
 
@@ -1381,7 +1425,7 @@ export const CallProvider = ({ children }) => {
             {true && (
               <button
                 onClick={toggleSpeaker}
-                className={`p-3.5 rounded-full transition-all duration-200 ${
+                className={`p-2.5 sm:p-3.5 rounded-full transition-all duration-200 ${
                   !isSpeakerOn
                     ? 'bg-red-500/20 text-red-500 border border-red-500/40 hover:bg-red-500/30'
                     : 'bg-white/10 text-white hover:bg-white/20'
@@ -1389,7 +1433,7 @@ export const CallProvider = ({ children }) => {
                 title={isSpeakerOn ? 'Turn Speaker Off' : 'Turn Speaker On'}
                 aria-label={isSpeakerOn ? 'Turn speaker off' : 'Turn speaker on'}
               >
-                {isSpeakerOn ? <Volume2 className="h-5.5 w-5.5" /> : <VolumeX className="h-5.5 w-5.5" />}
+                {isSpeakerOn ? <Volume2 className="h-5 sm:h-5.5 w-5 sm:w-5.5" /> : <VolumeX className="h-5 sm:h-5.5 w-5 sm:w-5.5" />}
               </button>
             )}
 
@@ -1399,16 +1443,16 @@ export const CallProvider = ({ children }) => {
                 {isRecording && (
                   <button
                     onClick={isRecordingPaused ? resumeRecording : pauseRecording}
-                    className="p-3.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/40 hover:bg-amber-500/30 transition-all duration-200"
+                    className="p-2.5 sm:p-3.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/40 hover:bg-amber-500/30 transition-all duration-200"
                     title={isRecordingPaused ? 'Resume Recording' : 'Pause Recording'}
                     aria-label={isRecordingPaused ? 'Resume recording' : 'Pause recording'}
                   >
-                    {isRecordingPaused ? <Play className="h-5.5 w-5.5" /> : <Pause className="h-5.5 w-5.5" />}
+                    {isRecordingPaused ? <Play className="h-5 sm:h-5.5 w-5 sm:w-5.5" /> : <Pause className="h-5 sm:h-5.5 w-5 sm:w-5.5" />}
                   </button>
                 )}
                 <button
                   onClick={isRecording ? stopRecording : () => setShowRecordConfirmation(true)}
-                  className={`p-3.5 rounded-full transition-all duration-200 ${
+                  className={`p-2.5 sm:p-3.5 rounded-full transition-all duration-200 ${
                     isRecording
                       ? 'bg-red-500/20 text-red-500 border border-red-500/40 hover:bg-red-500/30 animate-pulse'
                       : 'bg-white/10 text-white hover:bg-white/20'
@@ -1416,7 +1460,7 @@ export const CallProvider = ({ children }) => {
                   title={isRecording ? 'Stop Recording' : 'Start Recording'}
                   aria-label={isRecording ? 'Stop recording' : 'Start recording'}
                 >
-                  {isRecording ? <Square className="h-5.5 w-5.5 text-red-500 fill-red-500" /> : <Circle className="h-5.5 w-5.5 text-white fill-transparent" />}
+                  {isRecording ? <Square className="h-5 sm:h-5.5 w-5 sm:w-5.5 text-red-500 fill-red-500" /> : <Circle className="h-5 sm:h-5.5 w-5 sm:w-5.5 text-white fill-transparent" />}
                 </button>
               </>
             )}
@@ -1425,22 +1469,22 @@ export const CallProvider = ({ children }) => {
             {!isMobile && (
               <button
                 onClick={toggleFullscreen}
-                className="p-3.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
+                className="p-2.5 sm:p-3.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
                 title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
                 aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               >
-                {isFullscreen ? <Minimize2 className="h-5.5 w-5.5" /> : <Maximize2 className="h-5.5 w-5.5" />}
+                {isFullscreen ? <Minimize2 className="h-5 sm:h-5.5 w-5 sm:w-5.5" /> : <Maximize2 className="h-5 sm:h-5.5 w-5 sm:w-5.5" />}
               </button>
             )}
 
             {/* 6. End Call Button */}
             <button
               onClick={handleEndCall}
-              className="p-4 rounded-full bg-red-600 text-white hover:bg-red-550 active:scale-95 shadow-lg shadow-red-600/30 transition duration-200"
+              className="p-3 sm:p-4 rounded-full bg-red-600 text-white hover:bg-red-550 active:scale-95 shadow-lg shadow-red-600/30 transition duration-200"
               title="End Call"
               aria-label="End call"
             >
-              <PhoneOff className="h-6 w-6" />
+              <PhoneOff className="h-5 sm:h-6 w-5 sm:w-6" />
             </button>
           </div>
         </div>
