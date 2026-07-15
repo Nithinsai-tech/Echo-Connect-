@@ -36,3 +36,9 @@ Thumbs.db
 # Backend uploads / temp files
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# E2E Test Outputs
+e2e/screenshots/*.png
+e2e/downloads/
+artifacts/
+*.png

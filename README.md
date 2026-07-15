@@ -43,6 +43,14 @@ Echo Connect is a full-stack, responsive real-time chat application. It features
   * ICE Reconnection
   * Echo Cancellation & Noise Suppression
   * Speaker & Mute Controls
+* **Private Local Call Recording**:
+  * One-click recording consent modal
+  * Local MediaRecorder-based audio & video capture
+  * Web Audio API mixing of local and remote participant audio tracks
+  * Video call dual-stream PiP canvas composition (30 FPS)
+  * Control bar actions: Start, Pause, Resume, and Stop
+  * Local playback preview dialog supporting rename, download, and deletion
+  * Absolute privacy: local-only processing with no server storage, broadcasts, or indicators sent to the remote peer
 * **Persistent Call History & Logs**: Tracks calling records, durations, timestamps, and statuses (Completed, Missed, Rejected) securely in the database, updating both participants instantly.
 * **Message Controls**:
   * Message Star/Favorite logs (persisted locally)
@@ -108,6 +116,7 @@ Echo Connect is a full-stack, responsive real-time chat application. It features
 | Audio Output Speaker Routing | ✅ |
 | ICE Connection Auto-Restart | ✅ |
 | Call Logs & Offline Missed Calls | ✅ |
+| Private Call Recording | ✅ |
 | Mobile Responsive | ✅ |
 | Dark/Light Theme | ✅ |
 

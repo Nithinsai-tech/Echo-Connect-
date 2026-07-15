@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-07-15T04:22:20.797Z",
+  "timestamp": "2026-07-15T10:14:56.715Z",
   "url": "http://localhost:5173",
   "users": {
-    "userA": "e2eusera1784089282150@example.com",
-    "userB": "e2euserb1784089282150@example.com"
+    "userA": "e2eusera1784110442155@example.com",
+    "userB": "e2euserb1784110442155@example.com"
   },
   "results": {
     "1. Registration": {

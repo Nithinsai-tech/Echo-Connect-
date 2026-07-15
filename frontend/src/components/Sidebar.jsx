@@ -441,6 +441,28 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
 
                 const CallTypeIcon = call.type === 'video' ? Video : Phone;
 
+                const isRecorded = (() => {
+                  const recordedList = JSON.parse(localStorage.getItem('echo_recorded_calls') || '[]');
+                  const matchIndex = recordedList.findIndex(rec => 
+                    rec.callLogId === call._id || // 100% precise unique match
+                    (!rec.callLogId &&
+                     rec.roomId === call.roomId &&
+                     (rec.type === call.type || rec.mediaType === call.type) &&
+                     (rec.callDuration === call.duration || rec.duration === call.duration) &&
+                     Math.abs((rec.endTime || rec.endedAt) - new Date(call.createdAt).getTime()) < 15000)
+                  );
+                  if (matchIndex !== -1) {
+                    const matchedRec = recordedList[matchIndex];
+                    if (!matchedRec.callLogId && call._id) {
+                      // Dynamically associate callLogId to prevent any future ambiguity
+                      matchedRec.callLogId = call._id;
+                      localStorage.setItem('echo_recorded_calls', JSON.stringify(recordedList));
+                    }
+                    return true;
+                  }
+                  return false;
+                })();
+
                 return (
                   <div 
                     key={call._id} 
@@ -471,6 +493,11 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0 text-right">
+                      {isRecorded && (
+                        <span className="text-[9px] bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded text-red-500 font-semibold uppercase tracking-wider">
+                          Recorded
+                        </span>
+                      )}
                       {call.status === 'completed' && (
                         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
                           {formatDuration(call.duration)}

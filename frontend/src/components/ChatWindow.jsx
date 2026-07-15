@@ -199,6 +199,29 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
     } catch(e) {}
   }
 
+  const isRecorded = (() => {
+    if (!callData) return false;
+    const recordedList = JSON.parse(localStorage.getItem('echo_recorded_calls') || '[]');
+    const matchIndex = recordedList.findIndex(rec => 
+      rec.messageId === msg._id || // 100% precise unique match
+      (!rec.messageId &&
+       rec.roomId === msg.roomId &&
+       (rec.type === callData.callType || rec.mediaType === callData.callType) &&
+       (rec.callDuration === callData.duration || rec.duration === callData.duration) &&
+       Math.abs((rec.endTime || rec.endedAt) - new Date(msg.createdAt).getTime()) < 15000)
+    );
+    if (matchIndex !== -1) {
+      const matchedRec = recordedList[matchIndex];
+      if (!matchedRec.messageId && msg._id) {
+        // Dynamically associate messageId to prevent any future ambiguity
+        matchedRec.messageId = msg._id;
+        localStorage.setItem('echo_recorded_calls', JSON.stringify(recordedList));
+      }
+      return true;
+    }
+    return false;
+  })();
+
   const isDeleted = msg.isDeletedEveryone;
   const hasTextOrQuote = !!(contentText || replyData || forwardData);
   const isImageOnly = msg.mediaUrl && msg.type === 'image' && !isDeleted && !hasTextOrQuote;
@@ -457,6 +480,12 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                       return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
                     })()}
                   </span>
+                </div>
+              )}
+              {isRecorded && (
+                <div className="flex items-center justify-between text-[11px] opacity-90 text-red-500 dark:text-red-400 font-semibold">
+                  <span>Record:</span>
+                  <span>Recorded</span>
                 </div>
               )}
             </div>

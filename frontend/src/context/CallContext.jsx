@@ -15,8 +15,21 @@ import {
   VolumeX,
   Maximize2,
   Minimize2,
-  X
+  X,
+  Circle,
+  Square,
+  Pause,
+  Play,
+  Download,
+  Trash2
 } from 'lucide-react';
+
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'uuid_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+};
 
 const CallContext = createContext(null);
 
@@ -26,7 +39,7 @@ export const CallProvider = ({ children }) => {
   const { addToast } = useToast();
   const { fetchCalls } = useChat();
 
-  const [activeCall, setActiveCall] = useState(null); // { type: 'voice' | 'video', status: 'ringing' | 'connected', isCaller: boolean, targetId: string, targetName: string, targetAvatar: string }
+  const [activeCall, setActiveCall] = useState(null); // { type: 'voice' | 'video', status: 'ringing' | 'connected', isCaller: boolean, targetId: string, targetName: string, targetAvatar: string, roomId }
   const [incomingCall, setIncomingCall] = useState(null); // { roomId, callerId, callerName, callerAvatar, type, offer }
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
@@ -38,6 +51,27 @@ export const CallProvider = ({ children }) => {
   const [isRemoteVideoOff, setIsRemoteVideoOff] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+
+  // Call Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showRecordConfirmation, setShowRecordConfirmation] = useState(false);
+  const [showPlaybackDialog, setShowPlaybackDialog] = useState(false);
+  const [recordingUrl, setRecordingUrl] = useState('');
+  const [recordingBlob, setRecordingBlob] = useState(null);
+  const [recordingType, setRecordingType] = useState('voice');
+  const [customFilename, setCustomFilename] = useState('');
+
+  // Call Recording Refs
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const audioMixerCtxRef = useRef(null);
+  const isRecordingRef = useRef(false);
+  const recordingSessionRef = useRef(null);
+  const lastCallSessionRef = useRef(null);
+  const callDurationRef = useRef(0);
+  const recordingDurationRef = useRef(0);
 
   // WebRTC Calling Refs
   const localVideoRef = useRef(null);
@@ -157,6 +191,291 @@ export const CallProvider = ({ children }) => {
     }
   };
 
+  // Recording Timer Effect
+  useEffect(() => {
+    let interval = null;
+    if (isRecording && !isRecordingPaused) {
+      interval = setInterval(() => {
+        setRecordingDuration(prev => {
+          const next = prev + 1;
+          recordingDurationRef.current = next;
+          return next;
+        });
+      }, 1000);
+    } else {
+      setRecordingDuration(0);
+      recordingDurationRef.current = 0;
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording, isRecordingPaused]);
+
+  // Determine supported recording format
+  const getSupportedMimeType = (type) => {
+    if (type === 'video') {
+      const types = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4'
+      ];
+      for (const t of types) {
+        if (MediaRecorder.isTypeSupported(t)) return t;
+      }
+    } else {
+      const types = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4'
+      ];
+      for (const t of types) {
+        if (MediaRecorder.isTypeSupported(t)) return t;
+      }
+    }
+    return '';
+  };
+
+  // Mixed audio stream builder
+  const getMixedAudioStream = () => {
+    const localStream = localStreamRef.current;
+    const remoteStream = remoteStreamState;
+
+    if (!localStream && !remoteStream) return null;
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    try {
+      const audioCtx = new AudioContextClass();
+      const dest = audioCtx.createMediaStreamDestination();
+      let hasTracks = false;
+
+      if (localStream && localStream.getAudioTracks().length > 0) {
+        const sourceLocal = audioCtx.createMediaStreamSource(localStream);
+        sourceLocal.connect(dest);
+        hasTracks = true;
+      }
+
+      if (remoteStream && remoteStream.getAudioTracks().length > 0) {
+        const sourceRemote = audioCtx.createMediaStreamSource(remoteStream);
+        sourceRemote.connect(dest);
+        hasTracks = true;
+      }
+
+      if (!hasTracks) {
+        audioCtx.close();
+        return null;
+      }
+      return { mixedStream: dest.stream, audioCtx };
+    } catch (e) {
+      console.warn('Audio mixing error:', e);
+      return null;
+    }
+  };
+
+  // Start Call Recording
+  const startRecording = () => {
+    if (!activeCall || activeCall.status !== 'connected') {
+      addToast('Call must be connected to start recording', 'error');
+      return;
+    }
+
+    // Verify browser compatibility
+    const mimeType = getSupportedMimeType(activeCall.type);
+    if (!mimeType) {
+      addToast('Call recording is not supported on this browser.', 'error');
+      return;
+    }
+
+    try {
+      recordedChunksRef.current = [];
+      setRecordingDuration(0);
+      setRecordingType(activeCall.type);
+
+      const recordingId = generateUUID();
+      recordingSessionRef.current = {
+        recordingId,
+        callSessionId: activeCall.callSessionId || '',
+        roomId: activeCall.roomId || '',
+        mediaType: activeCall.type,
+        startedAt: Date.now()
+      };
+
+      const mixedAudioInfo = getMixedAudioStream();
+      let combinedStream = null;
+
+      if (activeCall.type === 'video') {
+        // Setup Canvas Compositor
+        const canvas = document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        const canvasCtx = canvas.getContext('2d');
+
+        isRecordingRef.current = true;
+
+        const drawFrame = () => {
+          if (!isRecordingRef.current) return;
+
+          // 1. Draw remote video
+          const remoteVideo = remoteVideoRef.current;
+          if (remoteVideo && remoteVideo.readyState >= 2) {
+            canvasCtx.drawImage(remoteVideo, 0, 0, canvas.width, canvas.height);
+          } else {
+            canvasCtx.fillStyle = '#111827';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+            canvasCtx.fillStyle = '#ffffff';
+            canvasCtx.font = 'bold 36px sans-serif';
+            canvasCtx.textAlign = 'center';
+            canvasCtx.fillText(activeCall.targetName || 'Video Call', canvas.width / 2, canvas.height / 2);
+          }
+
+          // 2. Draw local video as PiP in bottom-right corner
+          const localVideo = localVideoRef.current;
+          if (localVideo && localVideo.readyState >= 2 && !isVideoOff) {
+            const pipW = 320;
+            const pipH = 240;
+            const pipX = canvas.width - pipW - 30;
+            const pipY = canvas.height - pipH - 30;
+
+            canvasCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+            canvasCtx.lineWidth = 6;
+            canvasCtx.strokeRect(pipX - 3, pipY - 3, pipW + 6, pipH + 6);
+            canvasCtx.drawImage(localVideo, pipX, pipY, pipW, pipH);
+          }
+
+          requestAnimationFrame(drawFrame);
+        };
+
+        // Start animation loop
+        drawFrame();
+
+        const canvasStream = canvas.captureStream(30);
+        const tracks = [...canvasStream.getVideoTracks()];
+
+        if (mixedAudioInfo) {
+          tracks.push(...mixedAudioInfo.mixedStream.getAudioTracks());
+          audioMixerCtxRef.current = mixedAudioInfo.audioCtx;
+        }
+
+        combinedStream = new MediaStream(tracks);
+      } else {
+        // Voice Call - Audio only
+        if (mixedAudioInfo) {
+          combinedStream = mixedAudioInfo.mixedStream;
+          audioMixerCtxRef.current = mixedAudioInfo.audioCtx;
+        } else {
+          // Fallback to local mic
+          combinedStream = localStreamRef.current;
+        }
+      }
+
+      if (!combinedStream) {
+        addToast('No media stream available for recording', 'error');
+        return;
+      }
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        isRecordingRef.current = false;
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        setRecordingBlob(blob);
+        setRecordingUrl(url);
+
+        // Generate default filename: CallType_YYYY-MM-DD_HH-MM
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        const timeStr = now.toTimeString().split(' ')[0].substring(0, 5).replace(':', '-');
+        const defaultName = `${activeCall.type === 'video' ? 'VideoCall' : 'VoiceCall'}_${dateStr}_${timeStr}`;
+        setCustomFilename(defaultName);
+
+        // Finalize recordingSession metadata
+        const session = recordingSessionRef.current;
+        if (session) {
+          session.endedAt = Date.now();
+          session.duration = recordingDurationRef.current;
+          session.callDuration = callDurationRef.current;
+
+          const recordedList = JSON.parse(localStorage.getItem('echo_recorded_calls') || '[]');
+          recordedList.push(session);
+          localStorage.setItem('echo_recorded_calls', JSON.stringify(recordedList));
+        }
+
+        setShowPlaybackDialog(true);
+      };
+
+      recorder.start(1000);
+      setIsRecording(true);
+      setIsRecordingPaused(false);
+      addToast('Call recording started privately', 'success');
+    } catch (err) {
+      console.error('Failed to start media recorder:', err);
+      addToast('Error starting recording', 'error');
+    }
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.pause();
+      setIsRecordingPaused(true);
+      addToast('Recording paused', 'info');
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+      mediaRecorderRef.current.resume();
+      setIsRecordingPaused(false);
+      addToast('Recording resumed', 'info');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && (mediaRecorderRef.current.state === 'recording' || mediaRecorderRef.current.state === 'paused')) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      setIsRecordingPaused(false);
+      isRecordingRef.current = false;
+
+      // Close Web Audio AudioContext if opened
+      if (audioMixerCtxRef.current) {
+        audioMixerCtxRef.current.close().catch(e => console.warn(e));
+        audioMixerCtxRef.current = null;
+      }
+    }
+  };
+
+  const handleDownloadRecording = () => {
+    if (!recordingUrl || !recordingBlob) return;
+    const a = document.createElement('a');
+    a.href = recordingUrl;
+    a.download = `${customFilename || 'Recording'}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    addToast('Recording downloaded successfully', 'success');
+  };
+
+  const handleDeleteRecording = () => {
+    if (recordingUrl) {
+      URL.revokeObjectURL(recordingUrl);
+    }
+    setRecordingUrl('');
+    setRecordingBlob(null);
+    setShowPlaybackDialog(false);
+    addToast('Recording deleted', 'info');
+  };
+
   const handleIceRestart = async (targetUserId) => {
     try {
       const pc = peerConnectionRef.current;
@@ -251,7 +570,7 @@ export const CallProvider = ({ children }) => {
 
   const startVoiceCall = async (partnerId, roomId, partnerName, partnerAvatar) => {
     if (!partnerId || !socket) return;
-    setActiveCall({ type: 'voice', status: 'ringing', isCaller: true, targetId: partnerId, targetName: partnerName, targetAvatar: partnerAvatar });
+    setActiveCall({ type: 'voice', status: 'ringing', isCaller: true, targetId: partnerId, targetName: partnerName, targetAvatar: partnerAvatar, roomId, callSessionId: generateUUID() });
     startRingtone();
 
     try {
@@ -278,7 +597,7 @@ export const CallProvider = ({ children }) => {
 
   const startVideoCall = async (partnerId, roomId, partnerName, partnerAvatar) => {
     if (!partnerId || !socket) return;
-    setActiveCall({ type: 'video', status: 'ringing', isCaller: true, targetId: partnerId, targetName: partnerName, targetAvatar: partnerAvatar });
+    setActiveCall({ type: 'video', status: 'ringing', isCaller: true, targetId: partnerId, targetName: partnerName, targetAvatar: partnerAvatar, roomId, callSessionId: generateUUID() });
     startRingtone();
 
     try {
@@ -309,7 +628,7 @@ export const CallProvider = ({ children }) => {
     playConnectionTone();
 
     const { callerId, callerName, callerAvatar, type, offer, roomId } = incomingCall;
-    setActiveCall({ type, status: 'connected', isCaller: false, targetId: callerId, targetName: callerName, targetAvatar: callerAvatar });
+    setActiveCall({ type, status: 'connected', isCaller: false, targetId: callerId, targetName: callerName, targetAvatar: callerAvatar, roomId, callSessionId: generateUUID() });
     setIncomingCall(null);
 
     try {
@@ -352,6 +671,9 @@ export const CallProvider = ({ children }) => {
   };
 
   const handleEndCall = () => {
+    if (isRecordingRef.current) {
+      stopRecording();
+    }
     stopRingtone();
     playDisconnectTone();
 
@@ -377,6 +699,24 @@ export const CallProvider = ({ children }) => {
     setRemoteStreamState(null);
     iceCandidatesQueueRef.current = [];
 
+    if (activeCall?.callSessionId) {
+      try {
+        const recordedList = JSON.parse(localStorage.getItem('echo_recorded_calls') || '[]');
+        let modified = false;
+        recordedList.forEach(rec => {
+          if (rec.callSessionId === activeCall.callSessionId) {
+            rec.callDuration = callDurationRef.current;
+            modified = true;
+          }
+        });
+        if (modified) {
+          localStorage.setItem('echo_recorded_calls', JSON.stringify(recordedList));
+        }
+      } catch (e) {
+        console.warn('Error updating recordings with call duration:', e);
+      }
+    }
+    lastCallSessionRef.current = activeCall ? { ...activeCall, duration: callDurationRef.current } : null;
     setActiveCall(null);
     setIncomingCall(null);
     setIsMuted(false);
@@ -474,10 +814,15 @@ export const CallProvider = ({ children }) => {
     let interval = null;
     if (activeCall?.status === 'connected') {
       interval = setInterval(() => {
-        setCallDuration(prev => prev + 1);
+        setCallDuration(prev => {
+          const next = prev + 1;
+          callDurationRef.current = next;
+          return next;
+        });
       }, 1000);
     } else {
       setCallDuration(0);
+      callDurationRef.current = 0;
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -572,6 +917,9 @@ export const CallProvider = ({ children }) => {
     };
 
     const handleCallEnded = () => {
+      if (isRecordingRef.current) {
+        stopRecording();
+      }
       stopRingtone();
       playDisconnectTone();
 
@@ -588,6 +936,24 @@ export const CallProvider = ({ children }) => {
       setRemoteStreamState(null);
       iceCandidatesQueueRef.current = [];
 
+      if (activeCall?.callSessionId) {
+        try {
+          const recordedList = JSON.parse(localStorage.getItem('echo_recorded_calls') || '[]');
+          let modified = false;
+          recordedList.forEach(rec => {
+            if (rec.callSessionId === activeCall.callSessionId) {
+              rec.callDuration = callDurationRef.current;
+              modified = true;
+            }
+          });
+          if (modified) {
+            localStorage.setItem('echo_recorded_calls', JSON.stringify(recordedList));
+          }
+        } catch (e) {
+          console.warn('Error updating recordings with call duration:', e);
+        }
+      }
+      lastCallSessionRef.current = activeCall ? { ...activeCall, duration: callDurationRef.current } : null;
       setActiveCall(null);
       setIncomingCall(null);
       setIsMuted(false);
@@ -622,6 +988,38 @@ export const CallProvider = ({ children }) => {
       }
     };
 
+    const handleReceiveMessage = (message) => {
+      const lastSession = lastCallSessionRef.current;
+      if (!lastSession) return;
+
+      if (message.content && message.content.startsWith('{"_echoType"')) {
+        try {
+          const parsed = JSON.parse(message.content);
+          if (
+            parsed._echoType === 'call' &&
+            parsed.callType === lastSession.type &&
+            Math.abs(parsed.duration - lastSession.duration) <= 2
+          ) {
+            // Associate all recordings under the matched session with the database messageId
+            const recordedList = JSON.parse(localStorage.getItem('echo_recorded_calls') || '[]');
+            let modified = false;
+            recordedList.forEach(rec => {
+              if (rec.callSessionId === lastSession.callSessionId) {
+                rec.messageId = message._id;
+                modified = true;
+              }
+            });
+            if (modified) {
+              localStorage.setItem('echo_recorded_calls', JSON.stringify(recordedList));
+            }
+            lastCallSessionRef.current = null;
+          }
+        } catch (e) {
+          console.warn('Error parsing message content for recording match:', e);
+        }
+      }
+    };
+
     socket.on('call:incoming', handleIncomingCall);
     socket.on('call:answered', handleCallAnswered);
     socket.on('call:rejected', handleCallRejected);
@@ -629,6 +1027,7 @@ export const CallProvider = ({ children }) => {
     socket.on('call:ended', handleCallEnded);
     socket.on('call:video-state', handleVideoStateChanged);
     socket.on('call:ice-restart', handleIceRestartReceived);
+    socket.on('message:receive', handleReceiveMessage);
 
     return () => {
       socket.off('call:incoming', handleIncomingCall);
@@ -638,6 +1037,7 @@ export const CallProvider = ({ children }) => {
       socket.off('call:ended', handleCallEnded);
       socket.off('call:video-state', handleVideoStateChanged);
       socket.off('call:ice-restart', handleIceRestartReceived);
+      socket.off('message:receive', handleReceiveMessage);
     };
   }, [socket, activeCall, incomingCall]);
 
@@ -725,9 +1125,17 @@ export const CallProvider = ({ children }) => {
               </span>
               End-to-End Encrypted
             </span>
-            <span className="text-xs font-medium bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
-              {activeCall.type === 'video' ? 'Video Call' : 'Voice Call'}
-            </span>
+            <div className="flex items-center gap-2">
+              {isRecording && (
+                <span className="text-xs font-semibold bg-red-650/30 border border-red-500/40 px-3 py-1 rounded-full text-red-400 flex items-center gap-1.5 animate-pulse">
+                  <span className="h-2 w-2 rounded-full bg-red-550" />
+                  Recording {formatCallTimer(recordingDuration)}
+                </span>
+              )}
+              <span className="text-xs font-medium bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
+                {activeCall.type === 'video' ? 'Video Call' : 'Voice Call'}
+              </span>
+            </div>
           </div>
 
           {/* Call Body Layout */}
@@ -822,6 +1230,7 @@ export const CallProvider = ({ children }) => {
 
           {/* Call Controls Bar */}
           <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 md:gap-6 bg-black/40 px-6 py-4 rounded-3xl backdrop-blur-md border border-white/10 shadow-2xl transition-all duration-300 z-40 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+            {/* 1. Mic Button */}
             <button
               onClick={handleToggleMute}
               className={`p-3.5 rounded-full transition-all duration-200 ${
@@ -835,30 +1244,7 @@ export const CallProvider = ({ children }) => {
               {isMuted ? <MicOff className="h-5.5 w-5.5" /> : <Mic className="h-5.5 w-5.5" />}
             </button>
 
-            {(!isMobile || hasSinkSupport) && (
-              <button
-                onClick={toggleSpeaker}
-                className={`p-3.5 rounded-full transition-all duration-200 ${
-                  !isSpeakerOn
-                    ? 'bg-red-500/20 text-red-500 border border-red-500/40 hover:bg-red-500/30'
-                    : 'bg-white/10 text-white hover:bg-white/20'
-                }`}
-                title={isSpeakerOn ? 'Turn Speaker Off' : 'Turn Speaker On'}
-                aria-label={isSpeakerOn ? 'Turn speaker off' : 'Turn speaker on'}
-              >
-                {isSpeakerOn ? <Volume2 className="h-5.5 w-5.5" /> : <VolumeX className="h-5.5 w-5.5" />}
-              </button>
-            )}
-
-            <button
-              onClick={handleEndCall}
-              className="p-4 rounded-full bg-red-600 text-white hover:bg-red-550 active:scale-95 shadow-lg shadow-red-600/30 transition duration-200"
-              title="End Call"
-              aria-label="End call"
-            >
-              <PhoneOff className="h-6 w-6" />
-            </button>
-
+            {/* 2. Camera Button (Video call only) */}
             {activeCall.type === 'video' && (
               <button
                 onClick={handleToggleVideo}
@@ -874,13 +1260,70 @@ export const CallProvider = ({ children }) => {
               </button>
             )}
 
+            {/* 3. Speaker Button */}
+            {(!isMobile || hasSinkSupport) && (
+              <button
+                onClick={toggleSpeaker}
+                className={`p-3.5 rounded-full transition-all duration-200 ${
+                  !isSpeakerOn
+                    ? 'bg-red-500/20 text-red-500 border border-red-500/40 hover:bg-red-500/30'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
+                title={isSpeakerOn ? 'Turn Speaker Off' : 'Turn Speaker On'}
+                aria-label={isSpeakerOn ? 'Turn speaker off' : 'Turn speaker on'}
+              >
+                {isSpeakerOn ? <Volume2 className="h-5.5 w-5.5" /> : <VolumeX className="h-5.5 w-5.5" />}
+              </button>
+            )}
+
+            {/* 4. Record Button Controls */}
+            {activeCall.status === 'connected' && (
+              <>
+                {isRecording && (
+                  <button
+                    onClick={isRecordingPaused ? resumeRecording : pauseRecording}
+                    className="p-3.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/40 hover:bg-amber-500/30 transition-all duration-200"
+                    title={isRecordingPaused ? 'Resume Recording' : 'Pause Recording'}
+                    aria-label={isRecordingPaused ? 'Resume recording' : 'Pause recording'}
+                  >
+                    {isRecordingPaused ? <Play className="h-5.5 w-5.5" /> : <Pause className="h-5.5 w-5.5" />}
+                  </button>
+                )}
+                <button
+                  onClick={isRecording ? stopRecording : () => setShowRecordConfirmation(true)}
+                  className={`p-3.5 rounded-full transition-all duration-200 ${
+                    isRecording
+                      ? 'bg-red-500/20 text-red-500 border border-red-500/40 hover:bg-red-500/30 animate-pulse'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                  title={isRecording ? 'Stop Recording' : 'Start Recording'}
+                  aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+                >
+                  {isRecording ? <Square className="h-5.5 w-5.5 text-red-500 fill-red-500" /> : <Circle className="h-5.5 w-5.5 text-white fill-transparent" />}
+                </button>
+              </>
+            )}
+
+            {/* 5. Fullscreen Button (Desktop only) */}
+            {!isMobile && (
+              <button
+                onClick={toggleFullscreen}
+                className="p-3.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
+                title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              >
+                {isFullscreen ? <Minimize2 className="h-5.5 w-5.5" /> : <Maximize2 className="h-5.5 w-5.5" />}
+              </button>
+            )}
+
+            {/* 6. End Call Button */}
             <button
-              onClick={toggleFullscreen}
-              className="p-3.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
-              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              onClick={handleEndCall}
+              className="p-4 rounded-full bg-red-600 text-white hover:bg-red-550 active:scale-95 shadow-lg shadow-red-600/30 transition duration-200"
+              title="End Call"
+              aria-label="End call"
             >
-              {isFullscreen ? <Minimize2 className="h-5.5 w-5.5" /> : <Maximize2 className="h-5.5 w-5.5" />}
+              <PhoneOff className="h-6 w-6" />
             </button>
           </div>
         </div>
@@ -935,6 +1378,96 @@ export const CallProvider = ({ children }) => {
                 aria-label="Accept Call"
               >
                 <Phone className="h-5 w-5 text-white" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RECORDING CONFIRMATION MODAL */}
+      {showRecordConfirmation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm text-white p-4 font-sans">
+          <div className="bg-gray-900 border border-white/10 rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">Start Recording</h3>
+            <p className="text-sm text-gray-300">
+              Start recording this call? This recording will only be saved on your own device.
+            </p>
+            <div className="flex items-center justify-center gap-4 pt-2">
+              <button
+                onClick={() => setShowRecordConfirmation(false)}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowRecordConfirmation(false);
+                  startRecording();
+                }}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition"
+              >
+                Start Recording
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PLAYBACK PREVIEW MODAL */}
+      {showPlaybackDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm text-white p-4 font-sans">
+          <div className="bg-gray-900 border border-white/10 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-lg font-bold text-white">Call Recording Preview</h3>
+              <button
+                onClick={handleDeleteRecording}
+                className="p-1 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {recordingType === 'video' ? (
+                <div className="relative rounded-lg overflow-hidden border border-white/10 bg-black aspect-video flex items-center justify-center">
+                  <video src={recordingUrl} controls className="w-full h-full object-contain" />
+                </div>
+              ) : (
+                <div className="p-4 bg-gray-950 rounded-lg border border-white/10 flex flex-col items-center justify-center space-y-3">
+                  <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                    <Mic size={24} />
+                  </div>
+                  <span className="text-xs text-gray-400">Voice Call Recording</span>
+                  <audio src={recordingUrl} controls className="w-full" />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-400">Filename</label>
+                <input
+                  type="text"
+                  value={customFilename}
+                  onChange={(e) => setCustomFilename(e.target.value)}
+                  className="w-full bg-gray-950 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition"
+                  placeholder="Enter recording filename"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+              <button
+                onClick={handleDeleteRecording}
+                className="px-4 py-2 rounded-xl bg-red-650/15 border border-red-500/20 hover:bg-red-650/25 text-red-400 text-sm font-medium transition flex items-center gap-1.5"
+              >
+                <Trash2 size={16} />
+                Delete
+              </button>
+              <button
+                onClick={handleDownloadRecording}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition flex items-center gap-1.5"
+              >
+                <Download size={16} />
+                Download
               </button>
             </div>
           </div>
