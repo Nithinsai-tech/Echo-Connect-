@@ -111,6 +111,34 @@ const isSameSender = (msg1, msg2) => {
   return id1 && id2 && id1 === id2;
 };
 
+const isEmojiOnly = (str) => {
+  if (!str || typeof str !== 'string') return null;
+  
+  const cleaned = str
+    .replace(/\s+/g, '')
+    .replace(/[\ufe00-\ufe0f]/g, '')
+    .replace(/\u200d/g, '')
+    .replace(/[\uD83C][\uDFFB-\uDFFF]/g, '');
+
+  if (cleaned.length === 0) return null;
+
+  const codePoints = Array.from(cleaned);
+  const emojiRegex = /^\p{Emoji}$/u;
+  
+  let count = 0;
+  for (const cp of codePoints) {
+    if (emojiRegex.test(cp)) {
+      if (/^[0-9#*]$/.test(cp)) {
+        return null;
+      }
+      count++;
+    } else {
+      return null;
+    }
+  }
+  return count > 0 ? count : null;
+};
+
 // Memoized MessageItem Component for rendering performance
 const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser, searchQuery, isConsecutive, isContextMenuOpen }) => {
   const [touchStart, setTouchStart] = useState(null);
@@ -314,6 +342,184 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
     : isConsecutive
       ? 'rounded-2xl rounded-tl-sm rounded-bl-sm'
       : 'rounded-2xl rounded-tl-sm';
+
+  const emojiCount = isEmojiOnly(contentText);
+  const isEmojiMessage = !isDeleted && !callData && !msg.mediaUrl && !replyData && !forwardData && contentText && emojiCount !== null;
+
+  if (isEmojiMessage) {
+    const renderEmojiContent = () => {
+      if (emojiCount === 1) {
+        return (
+          <div className="flex flex-col items-center gap-1 py-1 px-2 select-none">
+            <span className="text-[64px] md:text-[72px] leading-none select-all animate-in zoom-in-50 duration-200">
+              {contentText}
+            </span>
+          </div>
+        );
+      } else if (emojiCount === 2 || emojiCount === 3) {
+        return (
+          <div className="flex flex-col items-center gap-1 py-1.5 px-3 select-none">
+            <span className="text-[44px] md:text-[50px] leading-none tracking-wider select-all animate-in zoom-in-50 duration-200">
+              {contentText}
+            </span>
+          </div>
+        );
+      } else {
+        return (
+          <div
+            className={`msg-bubble shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 px-3 py-2 ${bubbleCornersClass} ${
+              isSelf 
+                ? 'bg-[var(--bubble-mine)] hover:bg-[#15803D] text-white' 
+                : 'bg-[var(--bubble-theirs)] border-[#E0E0EA] dark:border-[#2C3045] hover:bg-[#E5E5E5] dark:hover:bg-[#3E4E68] text-[var(--bubble-theirs-text,var(--text-primary))]'
+            }`}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onContextMenu(e, msg._id, isSelf);
+              }}
+              className={`absolute top-1 right-1 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 ${
+                isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
+              title="Message Actions"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+
+            {!isSelf && isGroup && !isConsecutive && (
+              <span className="block text-[11px] font-bold text-orange-400 mb-0.5">
+                {msg.senderId?.name || 'User'}
+              </span>
+            )}
+
+            <p className="text-[26px] leading-[1.35] tracking-[0.03em] whitespace-pre-wrap break-words pb-4 pr-6 text-left select-all">
+              {contentText}
+            </p>
+
+            <div className={`absolute bottom-1 right-2 flex items-center gap-1 text-[9px] ${
+              isSelf 
+                ? 'text-white/60' 
+                : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
+            }`}>
+              {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
+              {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
+              <span>{formatMessageTime(msg.createdAt)}</span>
+              {isSelf && (
+                msg.status === 'seen' ? (
+                  <DoubleCheckBlue />
+                ) : msg.status === 'delivered' ? (
+                  <DoubleCheckGray />
+                ) : (
+                  <SingleCheck />
+                )
+              )}
+            </div>
+          </div>
+        );
+      }
+    };
+
+    return (
+      <div
+        onContextMenu={(e) => onContextMenu(e, msg._id, isSelf)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
+        style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
+        data-message-id={msg._id}
+        className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${
+          isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
+        } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
+      >
+        {swipeOffset > 10 && (
+          <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center text-orange-500 opacity-60">
+            <Reply className="h-4 w-4 animate-pulse" />
+          </div>
+        )}
+
+        {emojiCount <= 3 ? (
+          <div className="relative group max-w-[200px]">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onContextMenu(e, msg._id, isSelf);
+              }}
+              className={`absolute top-0 -right-4 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 ${
+                isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
+              title="Message Actions"
+            >
+              <ChevronDown className="h-3 w-3" />
+            </button>
+
+            {!isSelf && isGroup && !isConsecutive && (
+              <span className="block text-[11px] font-bold text-orange-400 mb-0.5 text-left">
+                {msg.senderId?.name || 'User'}
+              </span>
+            )}
+
+            {renderEmojiContent()}
+
+            <div className={`flex items-center justify-center gap-1 text-[9.5px] mt-0.5 select-none ${
+              isSelf 
+                ? 'text-gray-400' 
+                : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
+            }`}>
+              {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
+              {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
+              <span>{formatMessageTime(msg.createdAt)}</span>
+              {isSelf && (
+                msg.status === 'seen' ? (
+                  <DoubleCheckBlue />
+                ) : msg.status === 'delivered' ? (
+                  <DoubleCheckGray />
+                ) : (
+                  <SingleCheck />
+                )
+              )}
+            </div>
+          </div>
+        ) : (
+          renderEmojiContent()
+        )}
+
+        {!isDeleted && msg.reactions && msg.reactions.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1 justify-start">
+            {Object.entries(
+              msg.reactions.reduce((acc, r) => {
+                if (!acc[r.emoji]) acc[r.emoji] = [];
+                acc[r.emoji].push(r.userId);
+                return acc;
+              }, {})
+            ).map(([emoji, userIds]) => {
+              const hasReacted = userIds.includes(currentUser?._id);
+              return (
+                <button
+                  key={emoji}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReaction(msg._id, emoji, hasReacted ? 'remove' : 'add');
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold transition ${
+                    hasReacted 
+                      ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' 
+                      : 'bg-black/15 border-white/5 text-gray-300 hover:bg-black/25'
+                  }`}
+                  title={`${userIds.length} reaction${userIds.length > 1 ? 's' : ''}`}
+                >
+                  <span>{emoji}</span>
+                  <span>{userIds.length}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
