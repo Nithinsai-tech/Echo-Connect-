@@ -137,10 +137,99 @@ const updateProfile = async (req, res, next) => {
       { $set: updateFields },
       { new: true, runValidators: true }
     ).select('-password');
-
+ 
     res.status(200).json({
       success: true,
       data: updatedUser
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete user account and anonymize details
+// @route   POST /api/users/delete-account
+// @access  Private
+const deleteAccount = async (req, res, next) => {
+  const { password } = req.body;
+  const currentUserId = req.user._id.toString();
+
+  try {
+    const user = await User.findById(currentUserId).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.authProvider === 'local') {
+      if (!password) {
+        return res.status(400).json({ success: false, message: 'Password is required to confirm account deletion' });
+      }
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, message: 'Incorrect password' });
+      }
+    }
+
+    // 1. Remove friend relationships
+    await User.updateMany(
+      { contacts: req.user._id },
+      { $pull: { contacts: req.user._id } }
+    );
+
+    await FriendRequest.deleteMany({
+      $or: [
+        { sender: req.user._id },
+        { receiver: req.user._id }
+      ]
+    });
+
+    // 2. Leave all group chats
+    const ChatRoom = require('../models/ChatRoom');
+    const rooms = await ChatRoom.find({ participants: req.user._id });
+    for (const room of rooms) {
+      if (room.type === 'group') {
+        room.participants = room.participants.filter(p => p.toString() !== currentUserId);
+        room.invitedMembers = room.invitedMembers.filter(m => m.user.toString() !== currentUserId);
+        
+        if (room.participants.length === 0) {
+          await ChatRoom.findByIdAndDelete(room._id);
+        } else {
+          if (room.createdBy.toString() === currentUserId) {
+            room.createdBy = room.participants[0];
+          }
+          if (room.groupAdmin && room.groupAdmin.toString() === currentUserId) {
+            room.groupAdmin = room.participants[0];
+          }
+          await room.save();
+        }
+      }
+    }
+
+    // 3. Anonymize user details to "Deleted User"
+    await User.findByIdAndUpdate(currentUserId, {
+      $set: {
+        name: 'Deleted User',
+        email: `deleted_${currentUserId}@deleted.com`,
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=DU`,
+        contacts: [],
+        refreshTokenHash: null
+      },
+      $unset: {
+        password: 1,
+        googleId: 1
+      }
+    });
+
+    // Notify clients of presence change
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('presence:offline', { userId: currentUserId });
+      io.emit('user:deleted', { userId: currentUserId });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Account deleted successfully'
     });
   } catch (error) {
     next(error);
@@ -151,5 +240,6 @@ module.exports = {
   getAllUsers,
   searchUsers,
   getOnlineUsers,
-  updateProfile
+  updateProfile,
+  deleteAccount
 };

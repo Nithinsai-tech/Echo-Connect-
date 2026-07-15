@@ -120,8 +120,127 @@ const deleteMessageForMe = async (req, res, next) => {
     await Message.findByIdAndUpdate(messageId, {
       $addToSet: { deletedFor: currentUserId }
     });
-
+ 
     res.status(200).json({ success: true, message: 'Message deleted for you' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete message (Delete for everyone)
+// @route   POST /api/messages/:messageId/delete-for-everyone
+// @access  Private
+const deleteMessageForEveryone = async (req, res, next) => {
+  const { messageId } = req.params;
+  const currentUserId = req.user._id.toString();
+
+  try {
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found' });
+    }
+
+    let isAuthorized = message.senderId.toString() === currentUserId;
+    if (!isAuthorized) {
+      const room = await ChatRoom.findById(message.roomId);
+      if (room && room.type === 'group') {
+        const isAdmin = room.groupAdmin && room.groupAdmin.toString() === currentUserId;
+        const isCreator = room.createdBy.toString() === currentUserId;
+        if (isAdmin || isCreator) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this message for everyone' });
+    }
+
+    message.content = 'This message was deleted.';
+    message.mediaUrl = '';
+    message.isDeletedForEveryone = true;
+    await message.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(message.roomId.toString()).emit('message:deleted_for_everyone', {
+        messageId: message._id,
+        roomId: message.roomId
+      });
+    }
+
+    res.status(200).json({ success: true, message: 'Message deleted for everyone', data: message });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Bulk delete messages
+// @route   POST /api/messages/bulk-delete
+// @access  Private
+const bulkDeleteMessages = async (req, res, next) => {
+  const { messageIds, deleteType } = req.body;
+  const currentUserId = req.user._id.toString();
+
+  try {
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid or missing message IDs' });
+    }
+
+    if (deleteType === 'me') {
+      await Message.updateMany(
+        { _id: { $in: messageIds } },
+        { $addToSet: { deletedFor: req.user._id } }
+      );
+      return res.status(200).json({ success: true, message: 'Messages deleted for you' });
+    }
+
+    if (deleteType === 'everyone') {
+      const messages = await Message.find({ _id: { $in: messageIds } });
+      const deletedIds = [];
+      const roomIds = new Set();
+
+      for (const msg of messages) {
+        let isAuthorized = msg.senderId.toString() === currentUserId;
+        if (!isAuthorized) {
+          const room = await ChatRoom.findById(msg.roomId);
+          if (room && room.type === 'group') {
+            const isAdmin = room.groupAdmin && room.groupAdmin.toString() === currentUserId;
+            const isCreator = room.createdBy.toString() === currentUserId;
+            if (isAdmin || isCreator) {
+              isAuthorized = true;
+            }
+          }
+        }
+
+        if (isAuthorized) {
+          msg.content = 'This message was deleted.';
+          msg.mediaUrl = '';
+          msg.isDeletedForEveryone = true;
+          await msg.save();
+          deletedIds.push(msg._id);
+          roomIds.add(msg.roomId.toString());
+        }
+      }
+
+      const io = req.app.get('io');
+      if (io && deletedIds.length > 0) {
+        roomIds.forEach(roomId => {
+          io.to(roomId).emit('messages:bulk_deleted_for_everyone', {
+            messageIds: deletedIds,
+            roomId
+          });
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Successfully deleted ${deletedIds.length} messages for everyone.`,
+        deletedIds
+      });
+    }
+
+    res.status(400).json({ success: false, message: 'Invalid delete type' });
   } catch (error) {
     next(error);
   }
@@ -130,5 +249,7 @@ const deleteMessageForMe = async (req, res, next) => {
 module.exports = {
   getRoomMessages,
   markMessagesAsRead,
-  deleteMessageForMe
+  deleteMessageForMe,
+  deleteMessageForEveryone,
+  bulkDeleteMessages
 };

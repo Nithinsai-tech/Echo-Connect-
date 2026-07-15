@@ -39,3 +39,8 @@ export const declineFriendRequest = async (requestId) => {
   const response = await api.post('/contacts/decline', { requestId });
   return response.data;
 };
+
+export const deleteUserAccount = async (password) => {
+  const response = await api.post('/users/delete-account', { password });
+  return response.data;
+};

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, searchUsers, getOnlineUsers, updateProfile } = require('../controllers/userController');
+const { getAllUsers, searchUsers, getOnlineUsers, updateProfile, deleteAccount } = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
 // Protect all user endpoints
@@ -23,5 +23,6 @@ router.get('/', getAllUsers);
 router.get('/search', searchUsers);
 router.get('/online', getOnlineUsers);
 router.patch('/profile', updateProfile);
+router.post('/delete-account', deleteAccount);
 
 module.exports = router;

@@ -19,6 +19,16 @@ export const deleteMessage = async (messageId) => {
   return response.data;
 };
 
+export const deleteMessageForEveryone = async (messageId) => {
+  const response = await api.post(`/messages/${messageId}/delete-for-everyone`);
+  return response.data;
+};
+
+export const bulkDeleteMessages = async (messageIds, deleteType) => {
+  const response = await api.post(`/messages/bulk-delete`, { messageIds, deleteType });
+  return response.data;
+};
+
 export const uploadAttachment = async (file) => {
   const formData = new FormData();
   formData.append('file', file);

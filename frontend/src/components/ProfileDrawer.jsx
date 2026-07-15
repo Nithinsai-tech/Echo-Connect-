@@ -48,7 +48,8 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
     updateChatIncomingBubbleColor,
     updateChatWallpaper,
     updateChatTextSize,
-    toggleHighContrast
+    toggleHighContrast,
+    deleteAccountPermanently
   } = useChat();
 
   const [name, setName] = useState(user?.name || '');
@@ -60,6 +61,12 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
   const [savingBio, setSavingBio] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Delete account states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Notification Preferences
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -643,7 +650,100 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
           Log Out of Echo Connect
         </button>
 
+        {/* Delete Account Button */}
+        <button
+          onClick={() => setShowDeleteModal(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-650 bg-red-650/10 hover:bg-red-650/30 py-2.5 text-xs font-bold text-red-500 transition shadow mt-2"
+        >
+          <ShieldAlert className="h-4 w-4" />
+          Permanently Delete Account
+        </button>
+
       </div>
+
+      {showDeleteModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#161925] border border-red-900/30 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-500">
+              <ShieldAlert className="h-8 w-8 shrink-0" />
+              <div>
+                <h3 className="text-base font-extrabold text-white">Permanently Delete Account?</h3>
+                <p className="text-[10px] text-red-400 font-bold uppercase tracking-wider">Warning: This action is irreversible</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-300 leading-relaxed">
+              Are you absolutely sure you want to delete your account? All contacts, active friend requests, and settings will be permanently removed. Your messages will remain but your identity will be anonymized as <span className="font-semibold text-white">"Deleted User"</span>.
+            </p>
+
+            {user?.authProvider === 'local' && (
+              <div className="space-y-1.5 text-left">
+                <label className="block text-[10px] font-bold text-[#7A8199] uppercase tracking-wider">
+                  Enter Password to Confirm
+                </label>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => {
+                    setDeletePassword(e.target.value);
+                    setDeleteError('');
+                  }}
+                  placeholder="Your Account Password"
+                  className="w-full bg-[#1E2235] border border-[#2D334E] rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-red-500 text-white"
+                />
+              </div>
+            )}
+
+            {deleteError && (
+              <p className="text-xs text-red-400 font-semibold text-left">{deleteError}</p>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeletePassword('');
+                  setDeleteError('');
+                }}
+                disabled={deleting}
+                className="flex-1 rounded-2xl bg-[#23273B] hover:bg-[#2F344F] py-2.5 text-xs font-bold text-gray-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError('');
+                  try {
+                    const res = await deleteAccountPermanently(deletePassword);
+                    if (res && res.success) {
+                      setShowDeleteModal(false);
+                      logout();
+                    } else {
+                      setDeleteError(res?.message || 'Failed to delete account.');
+                    }
+                  } catch (err) {
+                    setDeleteError(err.response?.data?.message || 'Verification failed. Please check your credentials.');
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting || (user?.authProvider === 'local' && !deletePassword)}
+                className="flex-1 rounded-2xl bg-red-600 hover:bg-red-700 py-2.5 text-xs font-bold text-white transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  'Confirm Delete'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

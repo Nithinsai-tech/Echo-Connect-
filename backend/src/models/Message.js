@@ -42,7 +42,11 @@ const MessageSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
       }
-    ]
+    ],
+    isDeletedForEveryone: {
+      type: Boolean,
+      default: false
+    }
   },
   {
     timestamps: true

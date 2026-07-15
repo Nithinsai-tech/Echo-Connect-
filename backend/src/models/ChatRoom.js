@@ -28,6 +28,32 @@ const ChatRoomSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
+    groupAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'active'],
+      default: 'active'
+    },
+    groupDescription: {
+      type: String,
+      default: ''
+    },
+    invitedMembers: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User'
+        },
+        status: {
+          type: String,
+          enum: ['pending', 'accepted', 'rejected'],
+          default: 'pending'
+        }
+      }
+    ],
     lastMessage: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Message',

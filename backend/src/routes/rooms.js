@@ -6,7 +6,12 @@ const {
   getUserGroups,
   addGroupMember,
   removeGroupMember,
-  leaveGroup
+  leaveGroup,
+  acceptGroupInvitation,
+  rejectGroupInvitation,
+  updateGroupDetails,
+  transferGroupAdmin,
+  inviteGroupMembers
 } = require('../controllers/roomController');
 const { protect } = require('../middleware/auth');
 const { validateCreateRoom } = require('../middleware/validate');
@@ -35,6 +40,14 @@ router.post('/group', (req, res, next) => {
 }, validateCreateRoom, createRoom);
 
 router.get('/groups', getUserGroups);
+
+router.route('/:roomId')
+  .put(updateGroupDetails);
+
+router.post('/:roomId/accept', acceptGroupInvitation);
+router.post('/:roomId/reject', rejectGroupInvitation);
+router.post('/:roomId/transfer-admin', transferGroupAdmin);
+router.post('/:roomId/invite', inviteGroupMembers);
 
 router.route('/:roomId/members')
   .post(addGroupMember)

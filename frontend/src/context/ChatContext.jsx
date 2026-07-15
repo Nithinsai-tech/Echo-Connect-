@@ -19,7 +19,15 @@ import {
   getFriendRequests,
   acceptFriendRequest,
   declineFriendRequest,
-  getCalls
+  getCalls,
+  acceptGroupInvitation,
+  rejectGroupInvitation,
+  updateGroupDetails,
+  transferGroupAdmin,
+  inviteGroupMembers,
+  deleteUserAccount,
+  deleteMessageForEveryone,
+  bulkDeleteMessages
 } from '../api';
 
 // Helper to resolve reactions, replies, pins and deletes in a single linear pass
@@ -1058,6 +1066,74 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
+  const deleteMessageForEveryoneAction = async (messageId) => {
+    try {
+      const response = await deleteMessageForEveryone(messageId);
+      if (response.success) {
+        setRawMessages(prev => prev.map(msg => {
+          if (msg._id === messageId) {
+            return { ...msg, content: 'This message was deleted.', mediaUrl: '', isDeletedForEveryone: true };
+          }
+          return msg;
+        }));
+        setRooms(prev => prev.map(room => {
+          if (room.lastMessage?._id === messageId) {
+            return {
+              ...room,
+              lastMessage: {
+                ...room.lastMessage,
+                content: 'This message was deleted.',
+                mediaUrl: '',
+                isDeletedForEveryone: true
+              }
+            };
+          }
+          return room;
+        }));
+        addToast('Message deleted for everyone', 'success');
+      }
+    } catch (err) {
+      console.error('Error deleting message for everyone:', err.message);
+      addToast(err.response?.data?.message || 'Failed to delete message', 'error');
+      throw err;
+    }
+  };
+
+  const bulkDeleteMessagesAction = async (messageIds, deleteType) => {
+    try {
+      const response = await bulkDeleteMessages(messageIds, deleteType);
+      if (response.success) {
+        const idsSet = new Set(messageIds);
+        if (deleteType === 'me') {
+          setRawMessages(prev => prev.filter(msg => !idsSet.has(msg._id)));
+        } else {
+          setRawMessages(prev => prev.map(msg => {
+            if (idsSet.has(msg._id)) {
+              return { ...msg, content: 'This message was deleted.', mediaUrl: '', isDeletedForEveryone: true };
+            }
+            return msg;
+          }));
+        }
+        setRooms(prev => prev.map(room => {
+          if (room.lastMessage && idsSet.has(room.lastMessage._id)) {
+            return {
+              ...room,
+              lastMessage: deleteType === 'me'
+                ? { ...room.lastMessage, content: 'Message deleted.' }
+                : { ...room.lastMessage, content: 'This message was deleted.', mediaUrl: '', isDeletedForEveryone: true }
+            };
+          }
+          return room;
+        }));
+        addToast(`Messages deleted for ${deleteType === 'me' ? 'me' : 'everyone'}`, 'success');
+      }
+    } catch (err) {
+      console.error('Error bulk deleting messages:', err.message);
+      addToast(err.response?.data?.message || 'Failed to bulk delete messages', 'error');
+      throw err;
+    }
+  };
+
   // 13.2. Delete Message for Everyone (Control Message Sync)
   const sendDeleteForEveryone = async (messageId) => {
     const payload = {
@@ -1555,6 +1631,106 @@ export const ChatProvider = ({ children }) => {
       fetchCalls();
     };
 
+    const handleGroupInvited = ({ roomId, room }) => {
+      setRooms(prev => deduplicateRooms([room, ...prev]));
+      addToast(`Invited to group: ${room.groupName}`, 'info');
+    };
+
+    const handleGroupActivated = ({ roomId, room }) => {
+      setRooms(prev => prev.map(r => r._id === roomId ? room : r));
+      if (activeRoomRef.current?._id === roomId) {
+        setActiveRoom(room);
+      }
+      addToast(`Group ${room.groupName} is now active!`, 'success');
+    };
+
+    const handleGroupUpdate = (updatedRoom) => {
+      setRooms(prev => prev.map(r => r._id === updatedRoom._id ? updatedRoom : r));
+      if (activeRoomRef.current?._id === updatedRoom._id) {
+        setActiveRoom(updatedRoom);
+      }
+    };
+
+    const handleGroupCancelled = ({ roomId, rejectedByName }) => {
+      setRooms(prev => prev.filter(r => r._id !== roomId));
+      if (activeRoomRef.current?._id === roomId) {
+        setActiveRoom(null);
+      }
+      addToast(`Group invitation rejected by ${rejectedByName}`, 'warning');
+    };
+
+    const handleGroupRemoved = ({ roomId }) => {
+      setRooms(prev => prev.filter(r => r._id !== roomId));
+      if (activeRoomRef.current?._id === roomId) {
+        setActiveRoom(null);
+      }
+      addToast(`You were removed from group chat`, 'warning');
+    };
+
+    const handleUserDeleted = ({ userId }) => {
+      setUsers(prev => prev.filter(u => u._id !== userId));
+      setRooms(prev => prev.map(room => {
+        if (room.type === 'private' && room.participants.some(p => p._id === userId)) {
+          return {
+            ...room,
+            participants: room.participants.map(p => p._id === userId ? { ...p, name: 'Deleted User', avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=DU' } : p)
+          };
+        }
+        return room;
+      }));
+      setRawMessages(prev => prev.map(msg => {
+        if (msg.senderId?._id === userId) {
+          return {
+            ...msg,
+            senderId: { ...msg.senderId, name: 'Deleted User', avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=DU' }
+          };
+        }
+        return msg;
+      }));
+      addToast('A contact deleted their account', 'info');
+    };
+
+    const handleMessageDeletedForEveryone = ({ messageId, roomId }) => {
+      if (activeRoomRef.current?._id === roomId) {
+        setRawMessages(prev => prev.map(msg => {
+          if (msg._id === messageId) {
+            return { ...msg, content: 'This message was deleted.', mediaUrl: '', isDeletedForEveryone: true };
+          }
+          return msg;
+        }));
+      }
+      setRooms(prev => prev.map(room => {
+        if (room._id === roomId && room.lastMessage?._id === messageId) {
+          return {
+            ...room,
+            lastMessage: { ...room.lastMessage, content: 'This message was deleted.', mediaUrl: '', isDeletedForEveryone: true }
+          };
+        }
+        return room;
+      }));
+    };
+
+    const handleMessagesBulkDeletedForEveryone = ({ messageIds, roomId }) => {
+      const idsSet = new Set(messageIds);
+      if (activeRoomRef.current?._id === roomId) {
+        setRawMessages(prev => prev.map(msg => {
+          if (idsSet.has(msg._id)) {
+            return { ...msg, content: 'This message was deleted.', mediaUrl: '', isDeletedForEveryone: true };
+          }
+          return msg;
+        }));
+      }
+      setRooms(prev => prev.map(room => {
+        if (room._id === roomId && room.lastMessage && idsSet.has(room.lastMessage._id)) {
+          return {
+            ...room,
+            lastMessage: { ...room.lastMessage, content: 'This message was deleted.', mediaUrl: '', isDeletedForEveryone: true }
+          };
+        }
+        return room;
+      }));
+    };
+
     // Bind event hooks
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -1578,6 +1754,18 @@ export const ChatProvider = ({ children }) => {
     socket.on('friend_request:declined', handleFriendRequestDeclined);
     socket.on('call:logged', handleCallLogged);
 
+    // Group invitation/approval event listeners
+    socket.on('group:invited', handleGroupInvited);
+    socket.on('group:activated', handleGroupActivated);
+    socket.on('group:update', handleGroupUpdate);
+    socket.on('group:cancelled', handleGroupCancelled);
+    socket.on('group:removed', handleGroupRemoved);
+
+    // Account & Message deletion event listeners
+    socket.on('user:deleted', handleUserDeleted);
+    socket.on('message:deleted_for_everyone', handleMessageDeletedForEveryone);
+    socket.on('messages:bulk_deleted_for_everyone', handleMessagesBulkDeletedForEveryone);
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -1600,6 +1788,16 @@ export const ChatProvider = ({ children }) => {
       socket.off('friend_request:accepted', handleFriendRequestAccepted);
       socket.off('friend_request:declined', handleFriendRequestDeclined);
       socket.off('call:logged', handleCallLogged);
+
+      socket.off('group:invited', handleGroupInvited);
+      socket.off('group:activated', handleGroupActivated);
+      socket.off('group:update', handleGroupUpdate);
+      socket.off('group:cancelled', handleGroupCancelled);
+      socket.off('group:removed', handleGroupRemoved);
+
+      socket.off('user:deleted', handleUserDeleted);
+      socket.off('message:deleted_for_everyone', handleMessageDeletedForEveryone);
+      socket.off('messages:bulk_deleted_for_everyone', handleMessagesBulkDeletedForEveryone);
 
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       if (apiErrorTimeoutRef.current) clearTimeout(apiErrorTimeoutRef.current);
@@ -1678,6 +1876,106 @@ export const ChatProvider = ({ children }) => {
     });
   };
 
+  const acceptGroupInvite = async (roomId) => {
+    try {
+      const response = await acceptGroupInvitation(roomId);
+      if (response.success) {
+        setRooms(prev => prev.map(r => r._id === roomId ? response.data : r));
+        if (activeRoomRef.current?._id === roomId) {
+          setActiveRoom(response.data);
+        }
+        addToast('Accepted group invitation!', 'success');
+        return response.data;
+      }
+    } catch (err) {
+      console.error('Error accepting group invitation:', err.message);
+      addToast(err.response?.data?.message || 'Failed to accept invitation', 'error');
+      throw err;
+    }
+  };
+
+  const rejectGroupInvite = async (roomId) => {
+    try {
+      const response = await rejectGroupInvitation(roomId);
+      if (response.success) {
+        setRooms(prev => prev.filter(r => r._id !== roomId));
+        if (activeRoomRef.current?._id === roomId) {
+          selectRoom(null);
+        }
+        addToast('Rejected group invitation', 'info');
+        return response;
+      }
+    } catch (err) {
+      console.error('Error rejecting group invitation:', err.message);
+      addToast(err.response?.data?.message || 'Failed to reject invitation', 'error');
+      throw err;
+    }
+  };
+
+  const updateGroupInfo = async (roomId, details) => {
+    try {
+      const response = await updateGroupDetails(roomId, details);
+      if (response.success) {
+        setRooms(prev => prev.map(r => r._id === roomId ? response.data : r));
+        if (activeRoomRef.current?._id === roomId) {
+          setActiveRoom(response.data);
+        }
+        addToast('Group details updated', 'success');
+        return response.data;
+      }
+    } catch (err) {
+      console.error('Error updating group details:', err.message);
+      addToast(err.response?.data?.message || 'Failed to update group', 'error');
+      throw err;
+    }
+  };
+
+  const transferAdminStatus = async (roomId, targetUserId) => {
+    try {
+      const response = await transferGroupAdmin(roomId, targetUserId);
+      if (response.success) {
+        setRooms(prev => prev.map(r => r._id === roomId ? response.data : r));
+        if (activeRoomRef.current?._id === roomId) {
+          setActiveRoom(response.data);
+        }
+        addToast('Admin ownership transferred', 'success');
+        return response.data;
+      }
+    } catch (err) {
+      console.error('Error transferring admin ownership:', err.message);
+      addToast(err.response?.data?.message || 'Failed to transfer admin', 'error');
+      throw err;
+    }
+  };
+
+  const inviteGroupUsers = async (roomId, userIds) => {
+    try {
+      const response = await inviteGroupMembers(roomId, userIds);
+      if (response.success) {
+        setRooms(prev => prev.map(r => r._id === roomId ? response.data : r));
+        if (activeRoomRef.current?._id === roomId) {
+          setActiveRoom(response.data);
+        }
+        addToast('Invitations sent', 'success');
+        return response.data;
+      }
+    } catch (err) {
+      console.error('Error inviting members:', err.message);
+      addToast(err.response?.data?.message || 'Failed to send invitations', 'error');
+      throw err;
+    }
+  };
+
+  const deleteAccountPermanently = async (password) => {
+    try {
+      const response = await deleteUserAccount(password);
+      return response;
+    } catch (err) {
+      console.error('Error deleting account:', err.message);
+      throw err;
+    }
+  };
+
   return (
     <ChatContext.Provider value={{
       rooms,
@@ -1724,6 +2022,16 @@ export const ChatProvider = ({ children }) => {
       declineRequest,
       calls,
       fetchCalls,
+
+      // Group & Account workflows
+      acceptGroupInvite,
+      rejectGroupInvite,
+      updateGroupInfo,
+      transferAdminStatus,
+      inviteGroupUsers,
+      deleteAccountPermanently,
+      deleteMessageForEveryoneAction,
+      bulkDeleteMessagesAction,
 
       // Phase 4 Settings & Personalization Exports
       readReceipts,

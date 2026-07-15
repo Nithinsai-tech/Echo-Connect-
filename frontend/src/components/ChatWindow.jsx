@@ -610,7 +610,9 @@ const ChatWindow = () => {
     rooms,
     blockedUsers,
     toggleBlockUser,
-    leaveGroupRoom
+    leaveGroupRoom,
+    deleteMessageForEveryoneAction,
+    bulkDeleteMessagesAction
   } = useChat();
   
   const socket = useSocket();
@@ -626,6 +628,18 @@ const ChatWindow = () => {
   const [uploadError, setUploadError] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [sending, setSending] = useState(false);
+
+  // Message selection states
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+
+  const handleSelectMessage = (messageId) => {
+    setSelectedMessageIds(prev => 
+      prev.includes(messageId)
+        ? prev.filter(id => id !== messageId)
+        : [...prev, messageId]
+    );
+  };
 
   // Lightbox Image Viewer state
   const [activeImage, setActiveImage] = useState(null);
@@ -804,6 +818,8 @@ const ChatWindow = () => {
     setIsOptionsMenuOpen(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     closeContextMenu();
+    setIsSelectMode(false);
+    setSelectedMessageIds([]);
   }, [activeRoom]);
 
   // Escape key handler to close Image Lightbox viewer
@@ -1088,6 +1104,8 @@ const ChatWindow = () => {
     const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
     const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
 
+    const isSelected = selectedMessageIds.includes(msg._id);
+
     return (
       <div style={style} className="px-4 md:px-5">
         {showDateSeparator && (
@@ -1097,21 +1115,44 @@ const ChatWindow = () => {
             </span>
           </div>
         )}
-        <MessageItem
-          msg={msg}
-          isSelf={isSelf}
-          isGroup={isGroup}
-          isUnreadByMe={isUnreadByMe}
-          onContextMenu={handleContextMenu}
-          onImageClick={setActiveImage}
-          onReplySwipe={setReplyingToMessage}
-          onReaction={sendReaction}
-          starredMessages={starredMessages}
-          currentUser={user}
-          searchQuery={searchQuery}
-          isConsecutive={isConsecutive}
-          isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
-        />
+        <div 
+          className={`flex items-center gap-3 w-full cursor-pointer hover:bg-gray-150/10 dark:hover:bg-gray-850/10 rounded-xl transition ${isSelected ? 'bg-orange-500/5' : ''}`}
+          onClick={(e) => {
+            if (isSelectMode) {
+              e.stopPropagation();
+              handleSelectMessage(msg._id);
+            }
+          }}
+        >
+          {isSelectMode && (
+            <div className="shrink-0 pl-1">
+              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                isSelected 
+                  ? 'bg-[#FF6A00] border-[#FF6A00] text-white scale-110' 
+                  : 'border-[#4D536E] bg-[#161925]'
+              }`}>
+                {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+              </div>
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <MessageItem
+              msg={msg}
+              isSelf={isSelf}
+              isGroup={isGroup}
+              isUnreadByMe={isUnreadByMe}
+              onContextMenu={handleContextMenu}
+              onImageClick={setActiveImage}
+              onReplySwipe={setReplyingToMessage}
+              onReaction={sendReaction}
+              starredMessages={starredMessages}
+              currentUser={user}
+              searchQuery={searchQuery}
+              isConsecutive={isConsecutive}
+              isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
+            />
+          </div>
+        </div>
       </div>
     );
   };
@@ -1436,6 +1477,8 @@ const ChatWindow = () => {
                 const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
                 const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
 
+                const isSelected = selectedMessageIds.includes(msg._id);
+
                 return (
                   <div key={msg._id}>
                     {showDateSeparator && (
@@ -1445,21 +1488,44 @@ const ChatWindow = () => {
                         </span>
                       </div>
                     )}
-                    <MessageItem
-                      msg={msg}
-                      isSelf={isSelf}
-                      isGroup={isGroup}
-                      isUnreadByMe={isUnreadByMe}
-                      onContextMenu={handleContextMenu}
-                      onImageClick={setActiveImage}
-                      onReplySwipe={setReplyingToMessage}
-                      onReaction={sendReaction}
-                      starredMessages={starredMessages}
-                      currentUser={user}
-                      searchQuery={searchQuery}
-                      isConsecutive={isConsecutive}
-                      isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
-                    />
+                    <div 
+                      className={`flex items-center gap-3 w-full cursor-pointer hover:bg-gray-150/10 dark:hover:bg-gray-880/10 rounded-xl transition ${isSelected ? 'bg-orange-500/5' : ''}`}
+                      onClick={(e) => {
+                        if (isSelectMode) {
+                          e.stopPropagation();
+                          handleSelectMessage(msg._id);
+                        }
+                      }}
+                    >
+                      {isSelectMode && (
+                        <div className="shrink-0 pl-1">
+                          <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                            isSelected 
+                              ? 'bg-[#FF6A00] border-[#FF6A00] text-white scale-110' 
+                              : 'border-[#4D536E] bg-[#161925]'
+                          }`}>
+                            {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <MessageItem
+                          msg={msg}
+                          isSelf={isSelf}
+                          isGroup={isGroup}
+                          isUnreadByMe={isUnreadByMe}
+                          onContextMenu={handleContextMenu}
+                          onImageClick={setActiveImage}
+                          onReplySwipe={setReplyingToMessage}
+                          onReaction={sendReaction}
+                          starredMessages={starredMessages}
+                          currentUser={user}
+                          searchQuery={searchQuery}
+                          isConsecutive={isConsecutive}
+                          isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
+                        />
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -1603,7 +1669,64 @@ const ChatWindow = () => {
       )}
 
       {/* 4. INPUT CONTROLS BAR */}
-      {partner && blockedUsers.includes(partner._id) ? (
+      {isSelectMode ? (
+        <footer className="chat-input-footer flex shrink-0 items-center justify-between gap-3 px-6 py-4 z-20 border-t bg-[#161925] border-red-900/20 text-white animate-in slide-in-from-bottom" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2 text-xs font-bold text-gray-300">
+            <span className="bg-[#FF6A00] text-white rounded-full h-5 min-w-[20px] flex items-center justify-center px-1.5 font-extrabold">
+              {selectedMessageIds.length}
+            </span>
+            <span>selected</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setIsSelectMode(false);
+                setSelectedMessageIds([]);
+              }}
+              className="px-4 py-2 rounded-xl bg-[#23273B] hover:bg-[#2F344F] text-xs font-bold transition text-gray-300"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (selectedMessageIds.length === 0) return;
+                if (window.confirm(`Delete ${selectedMessageIds.length} messages for me?`)) {
+                  try {
+                    await bulkDeleteMessagesAction(selectedMessageIds, 'me');
+                    setIsSelectMode(false);
+                    setSelectedMessageIds([]);
+                  } catch (err) {
+                    console.error(err);
+                  }
+                }
+              }}
+              disabled={selectedMessageIds.length === 0}
+              className="px-4 py-2 rounded-xl bg-red-650/20 hover:bg-red-650/40 text-red-400 text-xs font-bold border border-red-500/30 transition disabled:opacity-50"
+            >
+              Delete for Me
+            </button>
+            <button
+              onClick={async () => {
+                if (selectedMessageIds.length === 0) return;
+                if (window.confirm(`Delete ${selectedMessageIds.length} messages for everyone?`)) {
+                  try {
+                    await bulkDeleteMessagesAction(selectedMessageIds, 'everyone');
+                    setIsSelectMode(false);
+                    setSelectedMessageIds([]);
+                  } catch (err) {
+                    console.error(err);
+                  }
+                }
+              }}
+              disabled={selectedMessageIds.length === 0}
+              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition disabled:opacity-50"
+            >
+              Delete for Everyone
+            </button>
+          </div>
+        </footer>
+      ) : partner && blockedUsers.includes(partner._id) ? (
         <footer className="chat-input-footer flex shrink-0 items-center justify-center gap-2 px-4 py-4 z-10 border-t animate-in fade-in" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-panel)' }}>
           <div className="flex items-center gap-2 text-red-500 font-medium text-xs select-none">
             <ShieldAlert className="h-4 w-4 shrink-0" />
@@ -1993,7 +2116,8 @@ const ChatWindow = () => {
 
             <button
               onClick={() => {
-                addToast('Message selection enabled', 'info');
+                setIsSelectMode(true);
+                setSelectedMessageIds([contextMenu.messageId]);
                 closeContextMenu();
               }}
               className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
@@ -2020,7 +2144,7 @@ const ChatWindow = () => {
             {contextMenu.isSelf && (
               <button
                 onClick={() => {
-                  sendDeleteForEveryone(contextMenu.messageId);
+                  deleteMessageForEveryoneAction(contextMenu.messageId);
                   closeContextMenu();
                 }}
                 className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-left text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors"

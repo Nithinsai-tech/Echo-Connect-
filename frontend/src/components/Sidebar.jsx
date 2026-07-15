@@ -159,8 +159,19 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
     acceptRequest,
     declineRequest,
     calls,
-    createDM
+    createDM,
+    acceptGroupInvite,
+    rejectGroupInvite
   } = useChat();
+
+  const pendingGroupInvites = rooms.filter(
+    room =>
+      room.type === 'group' &&
+      room.status === 'pending' &&
+      room.invitedMembers?.some(
+        m => m.user && (m.user._id || m.user) === user?._id && m.status === 'pending'
+      )
+  );
 
   const formatDuration = (seconds) => {
     if (!seconds || seconds <= 0) return '0s';
@@ -374,9 +385,9 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
               }}
             >
               <span>{tab}</span>
-              {tab === 'Requests' && friendRequests?.incoming?.length > 0 && (
+              {tab === 'Requests' && (friendRequests?.incoming?.length > 0 || pendingGroupInvites.length > 0) && (
                 <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shrink-0">
-                  {friendRequests.incoming.length}
+                  {(friendRequests?.incoming?.length || 0) + pendingGroupInvites.length}
                 </span>
               )}
             </button>
@@ -535,7 +546,7 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col min-w-0">
+                      <div className="flex flex-col min-w-0 text-left">
                         <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{req.sender?.name}</span>
                         <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{req.sender?.email}</span>
                       </div>
@@ -549,6 +560,53 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
                       </button>
                       <button
                         onClick={() => declineRequest(req._id)}
+                        className="px-2.5 py-1.5 rounded-lg bg-red-650 hover:bg-red-700 text-white text-xs font-bold transition"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Group Invitations */}
+            {pendingGroupInvites.length > 0 && (
+              <div>
+                <div 
+                  className="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b"
+                  style={{ color: '#FF6A00', backgroundColor: 'var(--bg-hover)', borderColor: 'var(--border)' }}
+                >
+                  Group Invitations ({pendingGroupInvites.length})
+                </div>
+                {pendingGroupInvites.map(room => (
+                  <div key={room._id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-850/20 transition">
+                    <div className="flex items-center min-w-0 mr-2">
+                      <div className="relative mr-3 h-9 w-9 shrink-0">
+                        {room.groupAvatar ? (
+                          <img src={room.groupAvatar} alt={room.groupName} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center rounded-full text-xs font-bold uppercase text-white" style={{ backgroundColor: getInitialsBg(room.groupName || '') }}>
+                            {getInitials(room.groupName || '')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0 text-left">
+                        <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{room.groupName}</span>
+                        <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                          Pending Admin Invite
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center shrink-0">
+                      <button
+                        onClick={() => acceptGroupInvite(room._id)}
+                        className="px-2.5 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition mr-1"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => rejectGroupInvite(room._id)}
                         className="px-2.5 py-1.5 rounded-lg bg-red-650 hover:bg-red-700 text-white text-xs font-bold transition"
                       >
                         Decline
@@ -580,7 +638,7 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col min-w-0">
+                      <div className="flex flex-col min-w-0 text-left">
                         <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{req.receiver?.name}</span>
                         <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{req.receiver?.email}</span>
                       </div>
@@ -596,7 +654,7 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
             )}
 
             {/* Zero State for Requests */}
-            {(!friendRequests?.incoming?.length && !friendRequests?.outgoing?.length) && (
+            {(!friendRequests?.incoming?.length && !friendRequests?.outgoing?.length && !pendingGroupInvites.length) && (
               <div className="flex flex-col items-center justify-center p-8 py-16 text-center">
                 <div
                   className="h-16 w-16 rounded-full flex items-center justify-center mb-4"
