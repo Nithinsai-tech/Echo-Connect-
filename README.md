@@ -1,6 +1,17 @@
-# Echo Connect – Scalable Real-Time Chat Application
+# Echo Connect – Real-Time Chat Application with Extensible Architecture
 
-Echo Connect is a full-stack, responsive real-time chat application. It features a stunning glassmorphic React web client and a secure, modular Node.js backend built with scalability and modern user experience in mind.
+[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://socket.io/)
+[![WebRTC](https://img.shields.io/badge/WebRTC-333333?style=for-the-badge&logo=webrtc&logoColor=white)](https://webrtc.org/)
+[![JWT](https://img.shields.io/badge/JWT-black?style=for-the-badge&logo=JSON%20web%20tokens)](https://jwt.io/)
+[![Google OAuth](https://img.shields.io/badge/Google%20OAuth-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://developers.google.com/identity)
+[![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/)
+[![Railway](https://img.shields.io/badge/Railway-130B24?style=for-the-badge&logo=railway&logoColor=white)](https://railway.app/)
+
+Echo Connect is a full-stack, responsive real-time chat application. It features a responsive React frontend supporting desktop and mobile layouts, and a secure, modular Node.js backend built following production-oriented practices.
 
 ---
 
@@ -12,34 +23,63 @@ Echo Connect is a full-stack, responsive real-time chat application. It features
 
 ---
 
+## 🎥 Demo Walkthrough
+
+![Echo Connect Walkthrough](docs/screenshots/demo.gif)
+
+---
+
 ## 🚀 Key Features
 
 * **Real-Time Bidirectional WebSockets**: Instantaneous text messages, stickers, media attachments, and read status indicators driven by **Socket.IO**.
-* **Designed for Horizontal Scaling**: Architecture designed to support horizontal Socket.IO scaling using a **Redis Pub/Sub adapter** to sync events across multiple clustered backend nodes.
-* **Persistent Chat History**: Core message streams, participant arrays, and conversation logs are indexed and stored securely in **MongoDB Atlas**.
-* **Secure JWT Session Control**: JWT authentication with refresh token rotation using in-memory `accessToken` and cookie-less `refreshToken` storage with Axios authorization interceptors.
-* **Google OAuth 2.0 Integration**: Built-in Google Passport strategy for hassle-free authentication, auto-creating user profiles, and linking with local credentials.
-* **One-to-One WebRTC Audio & Video Calling**: Complete peer-to-peer audio and video calling with signaling pipelines built directly into the Socket.IO server. Features include:
-  * **Global UI Overlay**: Full-screen call portal independent of routes, rendering anywhere inside the app.
-  * **FaceTime-like PIP Layout**: Custom swappable local/remote video layout with auto-hiding interactive overlay controls.
-  * **Advanced Media Constraints**: Configured with echo cancellation, noise suppression, and automatic gain control.
-  * **Speaker & Mute Controls**: In-call hardware mute/camera toggling and speaker output selection via `setSinkId`.
-  * **ICE Reconnection**: Resilient WebRTC recovery that restarts negotiations automatically on network transitions.
-* **Persistent Call History & History Logs**: Tracks calling records, durations, timestamps, and statuses (Completed, Missed, Rejected) securely in the database, updating both participants instantly.
-* **Message Controls**: Timeline utilities including:
+* **Designed with Redis Pub/Sub support for future horizontal scaling**: Syncs events across multiple clustered backend nodes.
+* **Persistent Chat History**: Core message streams, participant arrays, and conversation logs are indexed and stored in **MongoDB Atlas**.
+* **JWT Session Control**: JWT authentication with refresh token rotation using in-memory `accessToken` and cookie-less `refreshToken` storage with Axios authorization interceptors.
+* **Google OAuth 2.0 Integration**: Passport-based Google authentication flow, automatically creating user profiles and linking them with local credentials.
+* **One-to-One WebRTC Calling**:
+  * Voice & Video Calls
+  * Global Incoming Call Overlay
+  * Picture-in-Picture Layout
+  * ICE Reconnection
+  * Echo Cancellation & Noise Suppression
+  * Speaker & Mute Controls
+* **Persistent Call History & Logs**: Tracks calling records, durations, timestamps, and statuses (Completed, Missed, Rejected) securely in the database, updating both participants instantly.
+* **Message Controls**:
   * Message Star/Favorite logs (persisted locally)
   * Direct replies and forwards across rooms
   * Pinned messaging systems
   * Delete For Me (REST endpoint) and Delete For Everyone (real-time socket sync)
   * Sticker & Custom emoji picker
 * **Cloudinary Media Streaming**: Stream-based uploads that bypass intermediate server disk writes, utilizing Multer memory buffers to directly push files to Cloudinary.
-* **Security & Defense**: Robust defense implementations including **JWT Authentication**, **Passport Google OAuth**, **Helmet** security headers, **CORS** configurations, **Express Rate Limiting** on auth paths, and secure server-side **Request Validation**.
 * **Personalization Engine**: Global context-driven client styling allowing real-time adjustment of:
   * Theme mode (Light / Dark)
   * Customized Accent Colors (Orange, Blue, Green, Purple, Pink)
   * Chat Bubble Styles & Background Wallpaper
   * Chat text sizing (Small, Medium, Large, Extra Large)
   * High Contrast Mode for accessibility
+
+---
+
+## ⚡ Performance
+
+* **Socket.IO real-time messaging** with minimal payload structures.
+* **WebRTC peer-to-peer media** stream routing to bypass backend servers.
+* **MongoDB indexing** on user and message schemas for fast queries.
+* **Cursor-based pagination** for smooth message history loading.
+* **React lazy loading** and code splitting to reduce bundle size.
+* **Optimized rendering** utilizing virtualized message lists to render hundreds of items efficiently.
+
+---
+
+## 🛡️ Security
+
+* **JWT Authentication**: Short-lived access tokens combined with secure refresh rotation.
+* **Google OAuth**: Delegated auth to prevent local storage of plain-text credentials.
+* **Rate Limiting**: Express rate limiters on auth paths to protect against brute-force attacks.
+* **Helmet**: Standard security headers activated on all HTTP requests.
+* **Input Validation**: Server-side request sanitization and validation.
+* **CORS Policies**: Strict origin controls allowing requests only from verified clients.
+* **Protected Routes**: Client-side route guards synchronized with active session state.
 
 ---
 
@@ -127,7 +167,7 @@ Echo Connect is a full-stack, responsive real-time chat application. It features
                                  +--------------------------------+
                                  |     React Frontend Client      |
                                  +--------------------------------+
-                                  /       |                      \
+                                   /       |                      \
                      REST APIs   /        | Theme/Config          \ WebSockets & WebRTC
                                  v         v                        v
                    +-------------------+ +-------------------+  +------------------+
