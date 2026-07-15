@@ -178,10 +178,11 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
     setSwipeOffset(0);
   };
 
-  // Parse JSON message content (replies, forwards)
+  // Parse JSON message content (replies, forwards, calls)
   let contentText = msg.content;
   let replyData = null;
   let forwardData = null;
+  let callData = null;
   
   if (msg.content && msg.content.startsWith('{"_echoType"')) {
     try {
@@ -192,6 +193,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       } else if (parsed._echoType === 'forward') {
         forwardData = parsed;
         contentText = parsed.text;
+      } else if (parsed._echoType === 'call') {
+        callData = parsed;
       }
     } catch(e) {}
   }
@@ -410,11 +413,54 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
           </div>
         )}
 
-        {/* Message Text Content */}
+        {/* Message Text/Call Content */}
         {isDeleted ? (
           <p className="text-[13px] leading-relaxed break-words pb-3 pr-12 italic text-gray-400 select-none">
             This message was deleted
           </p>
+        ) : callData ? (
+          <div className={`flex flex-col gap-1 w-44 md:w-56 text-left pb-3 pr-12 pt-1 select-none ${isSelf ? 'text-white' : 'text-[var(--text-primary)]'}`}>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">
+                {callData.callType === 'video' ? '📹' : '📞'}
+              </span>
+              <span className="font-bold text-[14px]">
+                {callData.callType === 'video' ? 'Video Call' : 'Voice Call'}
+              </span>
+            </div>
+            <div className={`flex flex-col gap-1 mt-1.5 border-t pt-1.5 ${isSelf ? 'border-white/10' : 'border-gray-200 dark:border-gray-700'}`}>
+              <div className="flex items-center justify-between text-[11px] opacity-90">
+                <span>Status:</span>
+                <span className={`font-semibold ${
+                  callData.callStatus === 'completed' 
+                    ? 'text-emerald-500 dark:text-emerald-400' 
+                    : 'text-red-500 dark:text-red-400 font-medium'
+                }`}>
+                  {callData.callStatus === 'completed' 
+                    ? 'Completed' 
+                    : callData.callStatus === 'missed' 
+                      ? 'Missed' 
+                      : callData.callStatus === 'rejected'
+                        ? 'Rejected'
+                        : 'Missed'
+                  }
+                </span>
+              </div>
+              {callData.callStatus === 'completed' && (
+                <div className="flex items-center justify-between text-[11px] opacity-90">
+                  <span>Duration:</span>
+                  <span className="font-mono">
+                    {(() => {
+                      const totalSeconds = callData.duration || 0;
+                      const mins = Math.floor(totalSeconds / 60);
+                      const secs = totalSeconds % 60;
+                      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                    })()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           contentText && <p className="message-content-text text-[14px] leading-[1.5] tracking-[0.01em] whitespace-pre-wrap break-words pb-2 pr-12 text-left">{renderHighlightText(contentText, searchQuery)}</p>
         )}
@@ -660,7 +706,11 @@ const ChatWindow = () => {
       if (textContent.startsWith('{"_echoType"')) {
         try {
           const parsed = JSON.parse(textContent);
-          if (parsed.text) textContent = parsed.text;
+          if (parsed._echoType === 'call') {
+            textContent = `${parsed.callType === 'video' ? 'Video' : 'Voice'} Call (${parsed.callStatus})`;
+          } else if (parsed.text) {
+            textContent = parsed.text;
+          }
         } catch (e) {}
       }
       if (textContent.toLowerCase().includes(query)) {
@@ -1499,7 +1549,17 @@ const ChatWindow = () => {
             </span>
             <span className="text-[11px] text-gray-300 truncate mt-0.5">
               {replyingToMessage.content && replyingToMessage.content.startsWith('{"_echoType"') 
-                ? (() => { try { return JSON.parse(replyingToMessage.content).text; } catch(e) { return replyingToMessage.content; } })()
+                ? (() => { 
+                    try { 
+                      const parsed = JSON.parse(replyingToMessage.content); 
+                      if (parsed._echoType === 'call') {
+                        return `${parsed.callType === 'video' ? 'Video' : 'Voice'} Call (${parsed.callStatus})`;
+                      }
+                      return parsed.text || 'Media/Attachment'; 
+                    } catch(e) { 
+                      return replyingToMessage.content; 
+                    } 
+                  })()
                 : replyingToMessage.content || 'Media/Attachment'}
             </span>
           </div>
@@ -1680,7 +1740,11 @@ const ChatWindow = () => {
                         if (previewText && previewText.startsWith('{"_echoType"')) {
                           try {
                             const parsed = JSON.parse(previewText);
-                            if (parsed.text) previewText = parsed.text;
+                            if (parsed._echoType === 'call') {
+                              previewText = `${parsed.callType === 'video' ? 'Video' : 'Voice'} Call (${parsed.callStatus})`;
+                            } else if (parsed.text) {
+                              previewText = parsed.text;
+                            }
                           } catch(e) {}
                         }
                         return (
@@ -1845,7 +1909,11 @@ const ChatWindow = () => {
                   if (copyText.startsWith('{"_echoType"')) {
                     try {
                       const parsed = JSON.parse(copyText);
-                      if (parsed.text) copyText = parsed.text;
+                      if (parsed._echoType === 'call') {
+                        copyText = `${parsed.callType === 'video' ? 'Video' : 'Voice'} Call (${parsed.callStatus})`;
+                      } else if (parsed.text) {
+                        copyText = parsed.text;
+                      }
                     } catch(e) {}
                   }
                   navigator.clipboard.writeText(copyText);

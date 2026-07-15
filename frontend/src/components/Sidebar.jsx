@@ -16,7 +16,8 @@ import {
   Phone,
   PhoneIncoming,
   PhoneOutgoing,
-  PhoneMissed
+  PhoneMissed,
+  Video
 } from 'lucide-react';
 import NewChatModal from './NewChatModal';
 import ThemeToggle from './ThemeToggle';
@@ -119,6 +120,10 @@ const RoomItem = memo(({ room, isActive, user, typingUsers, selectRoom, getRoomM
                           return 'This message was deleted';
                         } else if (parsed._echoType === 'pin') {
                           return 'Pinned a message';
+                        } else if (parsed._echoType === 'call') {
+                          const typeIcon = parsed.callType === 'video' ? '📹' : '📞';
+                          const statusText = parsed.callStatus === 'completed' ? 'Completed' : parsed.callStatus === 'missed' ? 'Missed' : parsed.callStatus === 'rejected' ? 'Rejected' : 'Missed';
+                          return `${typeIcon} ${parsed.callType === 'video' ? 'Video' : 'Voice'} Call (${statusText})`;
                         }
                       } catch (e) {}
                     }
@@ -434,6 +439,8 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
                   statusLabel = 'Rejected';
                 }
 
+                const CallTypeIcon = call.type === 'video' ? Video : Phone;
+
                 return (
                   <div 
                     key={call._id} 
@@ -455,21 +462,23 @@ const Sidebar = ({ onNewChat, onOpenSettings, activeTab, setActiveTab, onLogout 
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col min-w-0">
+                      <div className="flex flex-col min-w-0 text-left">
                         <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{partner.name}</span>
-                        <span className="text-xs truncate flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                        <span className="text-xs truncate flex items-center gap-1.5 mt-0.5" style={{ color: 'var(--text-muted)' }}>
                           <StatusIcon size={12} style={{ color: iconColor }} />
-                          <span>{statusLabel} • {call.type === 'video' ? 'Video' : 'Voice'}</span>
+                          <span>{statusLabel} • {formatChatTime(call.createdAt)}</span>
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end shrink-0 text-right">
-                      <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{formatChatTime(call.createdAt)}</span>
+                    <div className="flex items-center gap-3 shrink-0 text-right">
                       {call.status === 'completed' && (
-                        <span className="text-[10px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
                           {formatDuration(call.duration)}
                         </span>
                       )}
+                      <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                        <CallTypeIcon size={16} />
+                      </div>
                     </div>
                   </div>
                 );

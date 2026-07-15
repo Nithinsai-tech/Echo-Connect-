@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect, createContext, useRef } from 'react';
 import { login as apiLogin, register as apiRegister, logout as apiLogout, refresh as apiRefresh } from '../api';
 
 export const AuthContext = createContext(null);
@@ -7,9 +7,13 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const bootstrapStarted = useRef(false);
 
   // Auto-refresh token on initial load if refresh token exists
   useEffect(() => {
+    if (bootstrapStarted.current) return;
+    bootstrapStarted.current = true;
+
     const bootstrapAuth = async () => {
       const storedUser = localStorage.getItem('chat_user');
       const refreshToken = localStorage.getItem('refreshToken');
@@ -19,20 +23,12 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      // Pre-load user details to avoid UI flickering while validating token
-      if (storedUser) {
-        try {
-          setUser(JSON.parse(storedUser));
-        } catch (e) {
-          console.error('Failed to parse cached user:', e);
-        }
-      }
 
       try {
         const response = await apiRefresh(refreshToken);
 
         if (response.success && response.data) {
-          const userData = response.data.user;
+          const userData = response.data.user || (storedUser ? JSON.parse(storedUser) : null);
 
           if (userData) {
             localStorage.setItem("chat_user", JSON.stringify(userData));

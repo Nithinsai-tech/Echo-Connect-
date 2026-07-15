@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-06-30T15:11:42.630Z",
-  "url": "https://echo-connect-8q3n.vercel.app",
+  "timestamp": "2026-07-15T04:22:20.797Z",
+  "url": "http://localhost:5173",
   "users": {
-    "userA": "e2eusera1782832178109@example.com",
-    "userB": "e2euserb1782832178109@example.com"
+    "userA": "e2eusera1784089282150@example.com",
+    "userB": "e2euserb1784089282150@example.com"
   },
   "results": {
     "1. Registration": {
@@ -15,8 +15,8 @@
       "detail": "empty:true noEarly:true name:true(200) partial:true email:true(200)"
     },
     "3. Friend Request": {
-      "pass": false,
-      "detail": "pending:false dupBlocked:false selfBlocked:true"
+      "pass": true,
+      "detail": "pending:true dupBlocked:true selfBlocked:true"
     },
     "4. Real-Time": {
       "pass": true,
@@ -27,33 +27,24 @@
       "detail": "gone:true A:true B:true"
     },
     "6. Persistence": {
-      "pass": false,
-      "detail": "refresh A:false B:false relogin A:false B:false"
+      "pass": true,
+      "detail": "refresh A:true B:true relogin A:true B:true"
     },
     "7. Messaging Smoke": {
-      "pass": false,
-      "detail": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByText('E2EUserB1782832178109').first()\n"
+      "pass": true,
+      "detail": "ok"
     },
     "8. Video Call Smoke": {
-      "pass": false,
-      "detail": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Video Call' })\n"
+      "pass": true,
+      "detail": "videos A:2 B:2"
     },
     "9. Console": {
       "pass": true,
       "detail": "jsErrors:0 apiFails:0"
     }
   },
-  "bugs": [
-    {
-      "test": "7",
-      "issue": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByText('E2EUserB1782832178109').first()\n"
-    },
-    {
-      "test": "8",
-      "issue": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Video Call' })\n"
-    }
-  ],
+  "bugs": [],
   "consoleErrors": [],
   "apiFailures": [],
-  "verdict": "NOT PRODUCTION READY"
+  "verdict": "PRODUCTION READY"
 }

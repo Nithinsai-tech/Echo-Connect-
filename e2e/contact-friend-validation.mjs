@@ -7,7 +7,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const BASE_URL = 'https://echo-connect-8q3n.vercel.app';
+const BASE_URL = 'http://localhost:5173';
 const SCREENSHOT_DIR = join(__dirname, 'screenshots');
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -39,15 +39,20 @@ async function shot(page, name) {
 
 function attachMonitors(page, label) {
   page.on('console', (msg) => {
+    console.log(`[BROWSER][${label}][${msg.type()}]`, msg.text());
     if (msg.type() === 'error') {
       const text = msg.text();
       if (!/favicon|\.(png|svg|ico)/i.test(text)) consoleErrors.push({ label, text });
     }
   });
-  page.on('pageerror', (err) => consoleErrors.push({ label, text: err.message }));
+  page.on('pageerror', (err) => {
+    console.error(`[BROWSER][${label}][PAGE_ERROR]`, err.message);
+    consoleErrors.push({ label, text: err.message });
+  });
   page.on('response', (res) => {
     const url = res.url();
     if (url.includes('/api/') && res.status() >= 400) {
+      console.warn(`[BROWSER][${label}][API_FAIL]`, url, res.status());
       apiFailures.push({ label, url, status: res.status() });
     }
   });
@@ -105,6 +110,15 @@ async function searchAndWait(page, query) {
   return resp;
 }
 
+async function checkVisible(locator, timeout = 5000) {
+  try {
+    await locator.waitFor({ state: 'visible', timeout });
+    return await locator.isVisible();
+  } catch (e) {
+    return false;
+  }
+}
+
 async function run() {
   const browser = await chromium.launch({
     headless: true,
@@ -137,8 +151,8 @@ async function run() {
     try {
       await registerUser(pageA, userA);
       await registerUser(pageB, userB);
-      const aNoContacts = await pageA.getByText('No contacts yet').isVisible({ timeout: 10000 });
-      const bNoContacts = await pageB.getByText('No contacts yet').isVisible({ timeout: 10000 });
+      const aNoContacts = await checkVisible(pageA.getByText('No contacts yet'), 10000);
+      const bNoContacts = await checkVisible(pageB.getByText('No contacts yet'), 10000);
       record('1. Registration', aNoContacts && bNoContacts,
         `A empty:${aNoContacts} B empty:${bNoContacts}`);
       if (!aNoContacts || !bNoContacts) await shot(pageA, 'fail-01-registration.png');
@@ -162,16 +176,16 @@ async function run() {
       const noEarlySearch = searchRequestsBeforeType === 0;
 
       const r1 = await searchAndWait(pageA, userB.name);
-      const fullName = await pageA.getByText(userB.name).first().isVisible({ timeout: 5000 });
+      const fullName = await checkVisible(pageA.getByText(userB.name).first(), 5000);
 
       const r2 = await searchAndWait(pageA, userB.name.slice(0, 8).toLowerCase());
-      const partialName = await pageA.getByText(userB.name).first().isVisible({ timeout: 5000 });
+      const partialName = await checkVisible(pageA.getByText(userB.name).first(), 5000);
 
       const r3 = await searchAndWait(pageA, userB.email);
-      const fullEmail = await pageA.getByText(userB.email).isVisible({ timeout: 5000 });
+      const fullEmail = await checkVisible(pageA.getByText(userB.email), 5000);
 
       const r4 = await searchAndWait(pageA, userB.email.split('@')[0].slice(0, 8));
-      const partialEmail = await pageA.getByText(userB.email).isVisible({ timeout: 5000 });
+      const partialEmail = await checkVisible(pageA.getByText(userB.email), 5000);
 
       const pass = emptyVisible && noAddFriend && noEarlySearch && fullName && partialName && fullEmail && partialEmail;
       record('2. Search', pass,
@@ -192,11 +206,11 @@ async function run() {
       const addBtn = pageA.getByRole('button', { name: 'Add Friend' });
       await addBtn.click();
       await pageA.waitForTimeout(2000);
-      const pendingShown = await pageA.getByText('Pending').isVisible({ timeout: 10000 }).catch(() => false)
-        || await pageA.getByRole('button', { name: 'Requests' }).locator('span').filter({ hasText: /^\d+$/ }).isVisible().catch(() => false);
+      const pendingShown = await checkVisible(pageA.getByText('Pending').first(), 10000)
+        || await checkVisible(pageA.getByRole('button', { name: 'Requests' }).locator('span').filter({ hasText: /^\d+$/ }), 10000);
 
       const dupClickBlocked = await addBtn.isVisible().catch(() => false) === false;
-      const stillPending = await pageA.getByText('Pending').isVisible();
+      const stillPending = await checkVisible(pageA.getByText('Pending').first(), 5000);
 
       await searchAndWait(pageA, userA.name);
       const selfAdd = await pageA.getByRole('button', { name: 'Add Friend' }).isVisible().catch(() => false);
@@ -218,9 +232,9 @@ async function run() {
       await pageB.bringToFront();
       await pageB.getByRole('button', { name: 'Requests' }).click();
       await pageB.waitForTimeout(3000);
-      const incoming = await pageB.getByText(userA.name).first().isVisible({ timeout: 20000 });
-      const badge = await pageB.locator('button').filter({ hasText: 'Requests' }).locator('span').filter({ hasText: /^1$/ }).isVisible().catch(() => false);
-      const acceptBtn = await pageB.getByRole('button', { name: 'Accept' }).first().isVisible({ timeout: 5000 });
+      const incoming = await checkVisible(pageB.getByText(userA.name).first(), 20000);
+      const badge = await checkVisible(pageB.locator('button').filter({ hasText: 'Requests' }).locator('span').filter({ hasText: /^1$/ }), 5000);
+      const acceptBtn = await checkVisible(pageB.getByRole('button', { name: 'Accept' }).first(), 5000);
       const pass = incoming && acceptBtn;
       record('4. Real-Time', pass, `incoming:${incoming} badge:${badge} accept:${acceptBtn}`);
       if (!pass) await shot(pageB, 'fail-04-realtime.png');
@@ -240,11 +254,11 @@ async function run() {
       await pageA.bringToFront();
       await pageA.getByRole('button', { name: 'All', exact: true }).click();
       await pageA.waitForTimeout(2000);
-      const aContact = await pageA.getByText(userB.name).first().isVisible({ timeout: 15000 });
+      const aContact = await checkVisible(pageA.getByText(userB.name).first(), 15000);
 
       await pageB.bringToFront();
       await pageB.getByRole('button', { name: 'All', exact: true }).click();
-      const bContact = await pageB.getByText(userA.name).first().isVisible({ timeout: 15000 });
+      const bContact = await checkVisible(pageB.getByText(userA.name).first(), 15000);
 
       const pass = requestGone && aContact && bContact;
       record('5. Accept', pass, `gone:${requestGone} A:${aContact} B:${bContact}`);
@@ -257,22 +271,31 @@ async function run() {
 
     // TEST 6
     try {
+      await pageA.bringToFront();
       await pageA.reload({ waitUntil: 'networkidle' });
+      await pageA.waitForTimeout(4000);
+      await shot(pageA, 'reload-A.png');
+
+      await pageB.bringToFront();
       await pageB.reload({ waitUntil: 'networkidle' });
-      await pageA.waitForTimeout(5000);
-      await pageB.waitForTimeout(5000);
-      const aRefresh = await pageA.getByText(userB.name).first().isVisible({ timeout: 20000 })
-        || await pageA.locator('[aria-label*="Chat room"]').filter({ hasText: userB.name }).isVisible({ timeout: 5000 }).catch(() => false);
-      const bRefresh = await pageB.getByText(userA.name).first().isVisible({ timeout: 20000 })
-        || await pageB.locator('[aria-label*="Chat room"]').filter({ hasText: userA.name }).isVisible({ timeout: 5000 }).catch(() => false);
+      await pageB.waitForTimeout(4000);
+      await shot(pageB, 'reload-B.png');
+
+      await pageA.bringToFront();
+      const aRefresh = await checkVisible(pageA.getByText(userB.name).first(), 20000)
+        || await checkVisible(pageA.locator('[aria-label*="Chat room"]').filter({ hasText: userB.name }), 5000);
+
+      await pageB.bringToFront();
+      const bRefresh = await checkVisible(pageB.getByText(userA.name).first(), 20000)
+        || await checkVisible(pageB.locator('[aria-label*="Chat room"]').filter({ hasText: userA.name }), 5000);
 
       await logoutUser(pageA);
       await loginUser(pageA, userA);
-      const aLogin = await pageA.getByText(userB.name).first().isVisible({ timeout: 15000 });
+      const aLogin = await checkVisible(pageA.getByText(userB.name).first(), 15000);
 
       await logoutUser(pageB);
       await loginUser(pageB, userB);
-      const bLogin = await pageB.getByText(userA.name).first().isVisible({ timeout: 15000 });
+      const bLogin = await checkVisible(pageB.getByText(userA.name).first(), 15000);
 
       const pass = aRefresh && bRefresh && aLogin && bLogin;
       record('6. Persistence', pass, `refresh A:${aRefresh} B:${bRefresh} relogin A:${aLogin} B:${bLogin}`);
@@ -287,7 +310,7 @@ async function run() {
     try {
       await pageA.bringToFront();
       const chatTarget = pageA.locator('[aria-label*="Chat room"]').filter({ hasText: userB.name }).first();
-      if (await chatTarget.isVisible({ timeout: 5000 }).catch(() => false)) {
+      if (await checkVisible(chatTarget, 5000)) {
         await chatTarget.click();
       } else {
         await pageA.getByText(userB.name).first().click();
@@ -296,10 +319,16 @@ async function run() {
       const msg = `E2E smoke ${ts}`;
       await pageA.locator('textarea').fill(msg);
       await pageA.getByRole('button', { name: 'Send message' }).click();
+
       await pageB.bringToFront();
-      await pageB.getByText(userA.name).first().click();
+      const bChatTarget = pageB.locator('[aria-label*="Chat room"]').filter({ hasText: userA.name }).first();
+      if (await checkVisible(bChatTarget, 5000)) {
+        await bChatTarget.click();
+      } else {
+        await pageB.getByText(userA.name).first().click();
+      }
       await pageB.waitForTimeout(3000);
-      const received = await pageB.getByText(msg).isVisible({ timeout: 20000 });
+      const received = await checkVisible(pageB.getByText(msg).first(), 20000);
       record('7. Messaging Smoke', received, received ? 'ok' : 'not received');
       if (!received) await shot(pageB, 'fail-07-messaging.png');
     } catch (e) {

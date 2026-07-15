@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const FriendRequest = require('../models/FriendRequest');
+const ChatRoom = require('../models/ChatRoom');
 
 // Helper to emit real-time socket events
 const emitToUser = (req, userId, event, data) => {
@@ -142,6 +143,20 @@ const acceptFriendRequest = async (req, res, next) => {
     // Add each other to contacts
     await User.findByIdAndUpdate(request.sender, { $addToSet: { contacts: request.receiver } });
     await User.findByIdAndUpdate(request.receiver, { $addToSet: { contacts: request.sender } });
+
+    // Create a private room if it doesn't exist
+    const existingRoom = await ChatRoom.findOne({
+      type: 'private',
+      participants: { $all: [request.sender, request.receiver], $size: 2 }
+    });
+
+    if (!existingRoom) {
+      await ChatRoom.create({
+        type: 'private',
+        participants: [request.sender, request.receiver],
+        createdBy: request.sender
+      });
+    }
 
     // Populate sender and receiver for client updates
     const requestData = await FriendRequest.findById(request._id)

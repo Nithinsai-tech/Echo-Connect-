@@ -505,6 +505,32 @@ const initSocket = (io) => {
       }
     });
 
+    socket.on('call:toggle-video', (data) => {
+      const { targetUserId, isVideoOff } = data;
+      const targetSockets = onlineUsers.get(targetUserId);
+      if (targetSockets && targetSockets.size > 0) {
+        targetSockets.forEach(sid => {
+          io.to(sid).emit('call:video-state', {
+            senderId: userId,
+            isVideoOff
+          });
+        });
+      }
+    });
+
+    socket.on('call:ice-restart', (data) => {
+      const { targetUserId, offer } = data;
+      const targetSockets = onlineUsers.get(targetUserId);
+      if (targetSockets && targetSockets.size > 0) {
+        targetSockets.forEach(sid => {
+          io.to(sid).emit('call:ice-restart', {
+            senderId: userId,
+            offer
+          });
+        });
+      }
+    });
+
     socket.on('call:end', (data) => {
       const { targetUserId } = data;
       

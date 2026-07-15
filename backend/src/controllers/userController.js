@@ -47,6 +47,7 @@ const searchUsers = async (req, res, next) => {
       ]
     })
       .select('name email avatar lastSeen')
+      .sort({ createdAt: -1 })
       .limit(15);
 
     const userIds = users.map(u => u._id);

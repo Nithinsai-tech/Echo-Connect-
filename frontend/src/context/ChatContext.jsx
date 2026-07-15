@@ -637,6 +637,7 @@ export const ChatProvider = ({ children }) => {
           outgoing: prev.outgoing.filter(r => r._id !== requestId)
         }));
         fetchUsers();
+        fetchRooms();
         addToast('Friend request accepted!', 'success');
         return response;
       }
@@ -1195,7 +1196,11 @@ export const ChatProvider = ({ children }) => {
         const parsed = JSON.parse(bodyText);
         if (parsed._echoType === 'reply') bodyText = parsed.text;
         else if (parsed._echoType === 'forward') bodyText = parsed.text || 'Forwarded attachment';
-        else return; // Ignore control messages from toasts
+        else if (parsed._echoType === 'call') {
+          const typeLabel = parsed.callType === 'video' ? 'Video' : 'Voice';
+          const statusText = parsed.callStatus === 'completed' ? 'Completed' : parsed.callStatus === 'missed' ? 'Missed' : parsed.callStatus === 'rejected' ? 'Rejected' : 'Missed';
+          bodyText = `${typeLabel} Call (${statusText})`;
+        } else return; // Ignore control messages from toasts
       } catch (e) {}
     }
     const avatar = message.senderId?.avatar || '';
@@ -1533,6 +1538,7 @@ export const ChatProvider = ({ children }) => {
         outgoing: prev.outgoing.filter(r => r._id !== request._id)
       }));
       fetchUsers();
+      fetchRooms();
       const isSender = request.sender._id === user._id;
       const otherUser = isSender ? request.receiver : request.sender;
       addToast(`You and ${otherUser.name} are now contacts!`, 'success');
