@@ -81,6 +81,7 @@ export const CallProvider = ({ children }) => {
 
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
+  const remoteStreamRef = useRef(null);
   const [localStreamState, setLocalStreamState] = useState(null);
   const [remoteStreamState, setRemoteStreamState] = useState(null);
   const iceCandidatesQueueRef = useRef([]);
@@ -240,7 +241,7 @@ export const CallProvider = ({ children }) => {
   // Mixed audio stream builder
   const getMixedAudioStream = () => {
     const localStream = localStreamRef.current;
-    const remoteStream = remoteStreamState;
+    const remoteStream = remoteStreamRef.current || remoteStreamState;
 
     if (!localStream && !remoteStream) return null;
 
@@ -249,6 +250,12 @@ export const CallProvider = ({ children }) => {
 
     try {
       const audioCtx = new AudioContextClass();
+      
+      // Auto-resume if suspended (vital for mobile WebRTC autoplay policies)
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.warn('Failed to resume audio context:', e));
+      }
+
       const dest = audioCtx.createMediaStreamDestination();
       let hasTracks = false;
 
@@ -304,6 +311,11 @@ export const CallProvider = ({ children }) => {
       };
 
       const mixedAudioInfo = getMixedAudioStream();
+      if (mixedAudioInfo && mixedAudioInfo.audioCtx) {
+        if (mixedAudioInfo.audioCtx.state === 'suspended') {
+          mixedAudioInfo.audioCtx.resume().catch(e => console.warn('Failed to resume mixed audio context:', e));
+        }
+      }
       let combinedStream = null;
 
       if (activeCall.type === 'video') {
@@ -497,13 +509,26 @@ export const CallProvider = ({ children }) => {
 
     iceCandidatesQueueRef.current = [];
 
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
-      ]
-    });
+    let iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' }
+    ];
+
+    if (import.meta.env.VITE_ICE_SERVERS) {
+      try {
+        const parsed = JSON.parse(import.meta.env.VITE_ICE_SERVERS);
+        if (Array.isArray(parsed)) {
+          iceServers = parsed;
+        }
+      } catch (err) {
+        console.warn('Failed to parse VITE_ICE_SERVERS:', err);
+      }
+    }
+
+    const pc = new RTCPeerConnection({ iceServers });
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
@@ -512,6 +537,14 @@ export const CallProvider = ({ children }) => {
           candidate: event.candidate
         });
       }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log('WebRTC Connection State changed:', pc.connectionState);
+    };
+
+    pc.onsignalingstatechange = () => {
+      console.log('WebRTC Signaling State changed:', pc.signalingState);
     };
 
     pc.oniceconnectionstatechange = () => {
@@ -523,8 +556,12 @@ export const CallProvider = ({ children }) => {
 
     pc.ontrack = (event) => {
       console.log('Received remote track:', event.track.kind);
-      const stream = event.streams[0] || new MediaStream([event.track]);
-      setRemoteStreamState(stream);
+      const incomingStream = event.streams[0] || new MediaStream([event.track]);
+      
+      remoteStreamRef.current = incomingStream;
+      
+      // Force a new MediaStream instance so React updates dependencies correctly
+      setRemoteStreamState(new MediaStream(incomingStream.getTracks()));
     };
 
     peerConnectionRef.current = pc;
@@ -533,35 +570,95 @@ export const CallProvider = ({ children }) => {
 
   const getUserMediaStream = async (videoRequired) => {
     try {
-      const constraints = {
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        },
-        video: videoRequired ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } : false
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
-      setLocalStreamState(stream);
-      return stream;
-    } catch (err) {
-      console.warn('getUserMedia error, fallback to audio-only constraints:', err);
+      let stream = null;
       if (videoRequired) {
+        // Attempt 1: Ideal mobile constraints with facingMode
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
+          stream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true
             },
+            video: {
+              width: { ideal: 640, max: 1280 },
+              height: { ideal: 480, max: 720 },
+              facingMode: 'user',
+              frameRate: { ideal: 24, max: 30 }
+            }
+          });
+        } catch (videoErr) {
+          console.warn('Ideal video constraints failed, trying simpler mobile constraints:', videoErr);
+          // Attempt 2: Simpler video constraints
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              },
+              video: {
+                facingMode: 'user'
+              }
+            });
+          } catch (videoErr2) {
+            console.warn('Simpler video constraints failed, trying basic video:true:', videoErr2);
+            // Attempt 3: Basic video:true
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: true
+            });
+          }
+        }
+      } else {
+        // Audio only
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: false
+        });
+      }
+
+      // Media Track Validation
+      if (stream) {
+        const audioTracks = stream.getAudioTracks();
+        const videoTracks = stream.getVideoTracks();
+        console.log(`Media acquired: Audio tracks = ${audioTracks.length}, Video tracks = ${videoTracks.length}`);
+        
+        audioTracks.forEach(t => console.log(`Audio Track: label="${t.label}" active=${t.active} enabled=${t.enabled} state=${t.readyState}`));
+        videoTracks.forEach(t => console.log(`Video Track: label="${t.label}" active=${t.active} enabled=${t.enabled} state=${t.readyState}`));
+
+        if (audioTracks.length === 0) {
+          console.warn('Warning: No local audio tracks acquired!');
+        }
+        if (videoRequired && videoTracks.length === 0) {
+          console.warn('Warning: Video requested but no video tracks acquired!');
+        }
+      }
+
+      localStreamRef.current = stream;
+      setLocalStreamState(stream);
+      return stream;
+    } catch (err) {
+      console.error('All local media acquisition attempts failed:', err);
+      addToast('Camera or Microphone access failed. Please check permissions.', 'error');
+      
+      // Emergency Fallback: Try audio only as last resort
+      if (videoRequired) {
+        try {
+          console.log('Attempting emergency audio-only fallback...');
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
             video: false
           });
-          localStreamRef.current = stream;
-          setLocalStreamState(stream);
-          return stream;
-        } catch (innerErr) {
-          console.warn('Fallback audio-only failed:', innerErr);
+          localStreamRef.current = fallbackStream;
+          setLocalStreamState(fallbackStream);
+          return fallbackStream;
+        } catch (fallbackErr) {
+          console.error('Audio-only fallback failed:', fallbackErr);
         }
       }
       return null;
@@ -730,31 +827,52 @@ export const CallProvider = ({ children }) => {
 
   const handleToggleMute = () => {
     const stream = localStreamRef.current;
+    const nextMuteState = !isMuted;
+
     if (stream) {
-      const audioTracks = stream.getAudioTracks();
-      const nextMuteState = !isMuted;
-      audioTracks.forEach(track => {
+      stream.getAudioTracks().forEach(track => {
         track.enabled = !nextMuteState;
       });
-      setIsMuted(nextMuteState);
     }
+
+    const pc = peerConnectionRef.current;
+    if (pc) {
+      pc.getSenders().forEach(sender => {
+        if (sender.track && sender.track.kind === 'audio') {
+          sender.track.enabled = !nextMuteState;
+        }
+      });
+    }
+
+    setIsMuted(nextMuteState);
   };
 
   const handleToggleVideo = () => {
     const stream = localStreamRef.current;
+    const nextVideoOff = !isVideoOff;
+
     if (stream) {
-      const videoTracks = stream.getVideoTracks();
-      const nextVideoOff = !isVideoOff;
-      videoTracks.forEach(track => {
+      stream.getVideoTracks().forEach(track => {
         track.enabled = !nextVideoOff;
       });
-      setIsVideoOff(nextVideoOff);
-      if (socket && activeCall) {
-        socket.emit('call:toggle-video', {
-          targetUserId: activeCall.targetId,
-          isVideoOff: nextVideoOff
-        });
-      }
+    }
+
+    const pc = peerConnectionRef.current;
+    if (pc) {
+      pc.getSenders().forEach(sender => {
+        if (sender.track && sender.track.kind === 'video') {
+          sender.track.enabled = !nextVideoOff;
+        }
+      });
+    }
+
+    setIsVideoOff(nextVideoOff);
+
+    if (socket && activeCall) {
+      socket.emit('call:toggle-video', {
+        targetUserId: activeCall.targetId,
+        isVideoOff: nextVideoOff
+      });
     }
   };
 
@@ -833,19 +951,22 @@ export const CallProvider = ({ children }) => {
   useEffect(() => {
     if (localVideoRef.current && localStreamState) {
       localVideoRef.current.srcObject = localStreamState;
+      localVideoRef.current.play().catch(err => console.warn("Local video play failed:", err));
     }
   }, [localStreamState, activeCall?.status, isVideoOff, isSwapped]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStreamState) {
       remoteVideoRef.current.srcObject = remoteStreamState;
+      remoteVideoRef.current.play().catch(err => console.warn("Remote video play failed:", err));
     }
-  }, [remoteStreamState, activeCall?.status, isSwapped]);
+  }, [remoteStreamState, activeCall?.status, isSwapped, isRemoteVideoOff]);
 
   // Bind audio for voice calls
   useEffect(() => {
     if (remoteAudioRef.current && remoteStreamState && activeCall?.type === 'voice') {
       remoteAudioRef.current.srcObject = remoteStreamState;
+      remoteAudioRef.current.play().catch(err => console.warn("Remote audio play failed:", err));
     }
   }, [remoteStreamState, activeCall?.status, activeCall?.type]);
 
@@ -903,16 +1024,14 @@ export const CallProvider = ({ children }) => {
     const handleCallCandidate = async (data) => {
       const { candidate } = data;
       const pc = peerConnectionRef.current;
-      if (pc) {
-        if (pc.remoteDescription && pc.remoteDescription.type) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (e) {
-            console.error('Error adding ICE candidate:', e);
-          }
-        } else {
-          iceCandidatesQueueRef.current.push(candidate);
+      if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.error('Error adding ICE candidate:', e);
         }
+      } else {
+        iceCandidatesQueueRef.current.push(candidate);
       }
     };
 
@@ -1146,14 +1265,13 @@ export const CallProvider = ({ children }) => {
                 onClick={() => isSwapped && setIsSwapped(false)}
                 className={remoteVideoClass}
               >
-                {!isRemoteVideoOff && remoteStreamState ? (
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className={`w-full h-full object-cover ${(!remoteStreamState || isRemoteVideoOff) ? 'hidden' : ''}`}
+                />
+                {(!remoteStreamState || isRemoteVideoOff) && (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-gray-950 space-y-2 text-center p-4">
                     <div className={`${!isSwapped ? 'h-24 w-24 text-3xl' : 'h-10 w-10 text-xs'} rounded-full bg-emerald-800 flex items-center justify-center font-bold uppercase transition-all duration-300`}>
                       {initials}
@@ -1171,15 +1289,14 @@ export const CallProvider = ({ children }) => {
                 onClick={() => !isSwapped && setIsSwapped(true)}
                 className={localVideoClass}
               >
-                {!isVideoOff && localStreamState ? (
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${(!localStreamState || isVideoOff) ? 'hidden' : ''}`}
+                />
+                {(!localStreamState || isVideoOff) && (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-gray-850 space-y-2 text-center p-4">
                     <div className={`${isSwapped ? 'h-24 w-24 text-3xl' : 'h-10 w-10 text-xs'} rounded-full bg-emerald-700 flex items-center justify-center font-bold uppercase transition-all duration-300`}>
                       {getInitials(user?.name || '')}
@@ -1261,7 +1378,7 @@ export const CallProvider = ({ children }) => {
             )}
 
             {/* 3. Speaker Button */}
-            {(!isMobile || hasSinkSupport) && (
+            {true && (
               <button
                 onClick={toggleSpeaker}
                 className={`p-3.5 rounded-full transition-all duration-200 ${
