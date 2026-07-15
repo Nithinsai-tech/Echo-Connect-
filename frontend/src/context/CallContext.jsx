@@ -502,6 +502,99 @@ export const CallProvider = ({ children }) => {
     }
   };
 
+  const optimizeSenderParameters = (pc) => {
+    if (!pc) return;
+    pc.getSenders().forEach(sender => {
+      if (!sender.track) return;
+      
+      try {
+        const parameters = sender.getParameters();
+        console.log(`[WebRTC-MediaQuality] RTCRtpSender (${sender.track.kind}) parameters before optimization:`, JSON.stringify(parameters));
+
+        let modified = false;
+
+        if (sender.track.kind === 'video') {
+          if (!parameters.encodings || parameters.encodings.length === 0) {
+            parameters.encodings = [{}];
+          }
+          parameters.encodings.forEach(encoding => {
+            // Set maxBitrate to 2.5 Mbps (2500000) for ideal HD streaming, max 30 FPS
+            if (encoding.maxBitrate !== 2500000) {
+              encoding.maxBitrate = 2500000;
+              modified = true;
+            }
+            if (encoding.maxFramerate !== 30) {
+              encoding.maxFramerate = 30;
+              modified = true;
+            }
+            if (encoding.scaleResolutionDownBy !== undefined) {
+              delete encoding.scaleResolutionDownBy;
+              modified = true;
+            }
+          });
+          if (parameters.degradationPreference !== 'maintain-resolution') {
+            parameters.degradationPreference = 'maintain-resolution';
+            modified = true;
+          }
+        } else if (sender.track.kind === 'audio') {
+          if (!parameters.encodings || parameters.encodings.length === 0) {
+            parameters.encodings = [{}];
+          }
+          parameters.encodings.forEach(encoding => {
+            // Set high voice quality audio bitrate to 96kbps (96000)
+            if (encoding.maxBitrate !== 96000) {
+              encoding.maxBitrate = 96000;
+              modified = true;
+            }
+          });
+        }
+
+        if (modified) {
+          sender.setParameters(parameters)
+            .then(() => {
+              console.log(`[WebRTC-MediaQuality] RTCRtpSender (${sender.track.kind}) parameters optimized successfully. Now:`, JSON.stringify(sender.getParameters()));
+            })
+            .catch(err => {
+              console.warn(`[WebRTC-MediaQuality] Failed to set RTCRtpSender (${sender.track.kind}) parameters:`, err);
+            });
+        }
+      } catch (err) {
+        console.warn(`[WebRTC-MediaQuality] Error reading/setting sender parameters:`, err);
+      }
+    });
+  };
+
+  const adjustVideoBitrateAdaptively = (pc, availableBitrate) => {
+    if (!pc) return;
+    pc.getSenders().forEach(sender => {
+      if (sender.track && sender.track.kind === 'video') {
+        try {
+          const parameters = sender.getParameters();
+          if (!parameters.encodings || parameters.encodings.length === 0) return;
+          
+          let updated = false;
+          parameters.encodings.forEach(encoding => {
+            // Target: Set maxBitrate to 70% of available bandwidth, clamped between 500kbps and 3.5Mbps
+            const targetBitrate = Math.max(500000, Math.min(3500000, Math.floor(availableBitrate * 0.7)));
+            if (encoding.maxBitrate !== targetBitrate) {
+              console.log(`[WebRTC-MediaQuality] Adapting Video Bitrate from ${encoding.maxBitrate} to ${targetBitrate} based on network bandwidth: ${availableBitrate} bps`);
+              encoding.maxBitrate = targetBitrate;
+              updated = true;
+            }
+          });
+
+          if (updated) {
+            sender.setParameters(parameters).catch(err => {
+              console.warn('[WebRTC-MediaQuality] Failed to set adaptive parameters:', err);
+            });
+          }
+        } catch (e) {
+          console.warn('[WebRTC-MediaQuality] Error adjusting adaptive bitrate:', e);
+        }
+      }
+    });
+  };
+
   const createPeerConnection = (targetUserId, roomId) => {
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
@@ -549,6 +642,10 @@ export const CallProvider = ({ children }) => {
 
     pc.onsignalingstatechange = () => {
       console.log('[WebRTC-Audit] Signaling State changed:', pc.signalingState);
+      if (pc.signalingState === 'stable') {
+        console.log('[WebRTC-MediaQuality] Signaling state stable. Optimizing sender parameters...');
+        optimizeSenderParameters(pc);
+      }
     };
 
     pc.onicegatheringstatechange = () => {
@@ -587,17 +684,21 @@ export const CallProvider = ({ children }) => {
       if (videoRequired) {
         // Attempt 1: Ideal mobile constraints with facingMode
         try {
+          console.log('[WebRTC-MediaQuality] Requesting high quality HD video & voice constraints...');
           stream = await navigator.mediaDevices.getUserMedia({
             audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true
+              echoCancellation: { ideal: true },
+              noiseSuppression: { ideal: true },
+              autoGainControl: { ideal: true },
+              channelCount: { ideal: 1 },
+              sampleRate: { ideal: 48000 },
+              sampleSize: { ideal: 16 }
             },
             video: {
-              width: { ideal: 640, max: 1280 },
-              height: { ideal: 480, max: 720 },
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
               facingMode: 'user',
-              frameRate: { ideal: 24, max: 30 }
+              frameRate: { ideal: 30, max: 60 }
             }
           });
         } catch (videoErr) {
@@ -606,9 +707,9 @@ export const CallProvider = ({ children }) => {
           try {
             stream = await navigator.mediaDevices.getUserMedia({
               audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
+                echoCancellation: { ideal: true },
+                noiseSuppression: { ideal: true },
+                autoGainControl: { ideal: true }
               },
               video: {
                 facingMode: 'user'
@@ -627,9 +728,12 @@ export const CallProvider = ({ children }) => {
         // Audio only
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 },
+            sampleSize: { ideal: 16 }
           },
           video: false
         });
@@ -639,10 +743,18 @@ export const CallProvider = ({ children }) => {
       if (stream) {
         const audioTracks = stream.getAudioTracks();
         const videoTracks = stream.getVideoTracks();
-        console.log(`Media acquired: Audio tracks = ${audioTracks.length}, Video tracks = ${videoTracks.length}`);
+        console.log(`[WebRTC-MediaQuality] Media acquired: Audio tracks = ${audioTracks.length}, Video tracks = ${videoTracks.length}`);
         
-        audioTracks.forEach(t => console.log(`Audio Track: label="${t.label}" active=${t.active} enabled=${t.enabled} state=${t.readyState}`));
-        videoTracks.forEach(t => console.log(`Video Track: label="${t.label}" active=${t.active} enabled=${t.enabled} state=${t.readyState}`));
+        audioTracks.forEach(t => {
+          console.log(`[WebRTC-MediaQuality] Local Audio Track: label="${t.label}" active=${t.active} enabled=${t.enabled} state=${t.readyState}`);
+          console.log(`[WebRTC-MediaQuality] Local Audio Constraints:`, JSON.stringify(t.getConstraints()));
+          console.log(`[WebRTC-MediaQuality] Local Audio Settings:`, JSON.stringify(t.getSettings()));
+        });
+        videoTracks.forEach(t => {
+          console.log(`[WebRTC-MediaQuality] Local Video Track: label="${t.label}" active=${t.active} enabled=${t.enabled} state=${t.readyState}`);
+          console.log(`[WebRTC-MediaQuality] Local Video Constraints:`, JSON.stringify(t.getConstraints()));
+          console.log(`[WebRTC-MediaQuality] Local Video Settings:`, JSON.stringify(t.getSettings()));
+        });
 
         if (audioTracks.length === 0) {
           console.warn('Warning: No local audio tracks acquired!');
@@ -987,15 +1099,49 @@ export const CallProvider = ({ children }) => {
   // Bind video and audio element streams when they render
   useEffect(() => {
     if (localVideoRef.current && localStreamState) {
-      localVideoRef.current.srcObject = localStreamState;
-      localVideoRef.current.play().catch(err => console.warn("Local video play failed:", err));
+      const videoEl = localVideoRef.current;
+      videoEl.srcObject = localStreamState;
+      
+      const logResolution = () => {
+        console.log(`[WebRTC-MediaQuality] Local Video Render Resolution: ${videoEl.videoWidth}x${videoEl.videoHeight}`);
+      };
+      videoEl.addEventListener('loadedmetadata', logResolution);
+      videoEl.addEventListener('resize', logResolution);
+      
+      videoEl.play()
+        .then(() => {
+          console.log(`[WebRTC-MediaQuality] Local video playing. Immediate resolution: ${videoEl.videoWidth}x${videoEl.videoHeight}`);
+        })
+        .catch(err => console.warn("Local video play failed:", err));
+
+      return () => {
+        videoEl.removeEventListener('loadedmetadata', logResolution);
+        videoEl.removeEventListener('resize', logResolution);
+      };
     }
   }, [localStreamState, activeCall?.status, isVideoOff, isSwapped]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStreamState) {
-      remoteVideoRef.current.srcObject = remoteStreamState;
-      remoteVideoRef.current.play().catch(err => console.warn("Remote video play failed:", err));
+      const videoEl = remoteVideoRef.current;
+      videoEl.srcObject = remoteStreamState;
+
+      const logResolution = () => {
+        console.log(`[WebRTC-MediaQuality] Remote Video Render Resolution: ${videoEl.videoWidth}x${videoEl.videoHeight}`);
+      };
+      videoEl.addEventListener('loadedmetadata', logResolution);
+      videoEl.addEventListener('resize', logResolution);
+
+      videoEl.play()
+        .then(() => {
+          console.log(`[WebRTC-MediaQuality] Remote video playing. Immediate resolution: ${videoEl.videoWidth}x${videoEl.videoHeight}`);
+        })
+        .catch(err => console.warn("Remote video play failed:", err));
+
+      return () => {
+        videoEl.removeEventListener('loadedmetadata', logResolution);
+        videoEl.removeEventListener('resize', logResolution);
+      };
     }
   }, [remoteStreamState, activeCall?.status, isSwapped, isRemoteVideoOff]);
 
@@ -1006,6 +1152,90 @@ export const CallProvider = ({ children }) => {
       remoteAudioRef.current.play().catch(err => console.warn("Remote audio play failed:", err));
     }
   }, [remoteStreamState, activeCall?.status, activeCall?.type]);
+
+  // Periodic WebRTC Statistics Collector & Adaptive Quality Adjuster
+  useEffect(() => {
+    if (!activeCall || activeCall.status !== 'connected' || !peerConnectionRef.current) return;
+
+    const interval = setInterval(async () => {
+      const pc = peerConnectionRef.current;
+      if (!pc || pc.connectionState !== 'connected') return;
+
+      try {
+        const stats = await pc.getStats();
+        
+        let videoStats = {};
+        let audioStats = {};
+        let networkStats = {};
+        let codecs = [];
+
+        stats.forEach(report => {
+          // Codecs
+          if (report.type === 'codec') {
+            codecs.push(`${report.mimeType} (payload: ${report.payloadType})`);
+          }
+
+          // Outbound Video Track Stats
+          if (report.type === 'outbound-rtp' && report.kind === 'video') {
+            videoStats.bytesSent = report.bytesSent;
+            videoStats.framesEncoded = report.framesEncoded;
+            videoStats.frameWidth = report.frameWidth;
+            videoStats.frameHeight = report.frameHeight;
+            videoStats.framesPerSecond = report.framesPerSecond;
+            videoStats.encoderImplementation = report.encoderImplementation;
+            videoStats.qualityLimitationReason = report.qualityLimitationReason;
+          }
+
+          // Inbound Video Track Stats
+          if (report.type === 'inbound-rtp' && report.kind === 'video') {
+            videoStats.bytesReceived = report.bytesReceived;
+            videoStats.framesDecoded = report.framesDecoded;
+            videoStats.packetsLost = report.packetsLost;
+            videoStats.jitter = report.jitter;
+            videoStats.frameWidthImport = report.frameWidth;
+            videoStats.frameHeightImport = report.frameHeight;
+            videoStats.framesPerSecondImport = report.framesPerSecond;
+          }
+
+          // Outbound Audio Track Stats
+          if (report.type === 'outbound-rtp' && report.kind === 'audio') {
+            audioStats.bytesSent = report.bytesSent;
+          }
+
+          // Inbound Audio Track Stats
+          if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+            audioStats.bytesReceived = report.bytesReceived;
+            audioStats.packetsLost = report.packetsLost;
+            audioStats.jitter = report.jitter;
+            audioStats.concealedSamples = report.concealedSamples;
+            audioStats.totalAudioEnergy = report.totalAudioEnergy;
+          }
+
+          // Candidate Pair / Network Stats
+          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            networkStats.rtt = report.currentRoundTripTime;
+            networkStats.availableOutgoingBitrate = report.availableOutgoingBitrate;
+            networkStats.availableIncomingBitrate = report.availableIncomingBitrate;
+          }
+        });
+
+        console.log('[WebRTC-MediaQuality] Periodic Stats Report:');
+        console.log(' - Negotiated Codecs:', codecs.join(', '));
+        console.log(' - Video Stats:', JSON.stringify(videoStats));
+        console.log(' - Audio Stats:', JSON.stringify(audioStats));
+        console.log(' - Network Stats:', JSON.stringify(networkStats));
+
+        // Adaptive Quality: Scale video bitrate adaptively if network bandwidth reports exist
+        if (networkStats.availableOutgoingBitrate !== undefined) {
+          adjustVideoBitrateAdaptively(pc, networkStats.availableOutgoingBitrate);
+        }
+      } catch (err) {
+        console.warn('Error collecting WebRTC stats:', err);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [activeCall?.status]);
 
   // Global socket calling listeners
   useEffect(() => {
