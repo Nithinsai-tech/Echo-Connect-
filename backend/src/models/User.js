@@ -48,6 +48,10 @@ const UserSchema = new mongoose.Schema(
         ref: 'User'
       }
     ],
+    wallpaper: {
+      type: String,
+      default: ''
+    },
     refreshTokenHash: {
       type: String,
       default: null,

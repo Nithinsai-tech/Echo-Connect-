@@ -15,8 +15,8 @@ export const getOnlineUsers = async () => {
   return response.data;
 };
 
-export const updateUserProfile = async ({ name, avatar }) => {
-  const response = await api.patch('/users/profile', { name, avatar });
+export const updateUserProfile = async ({ name, avatar, wallpaper }) => {
+  const response = await api.patch('/users/profile', { name, avatar, wallpaper });
   return response.data;
 };
 

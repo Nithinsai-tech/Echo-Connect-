@@ -14,7 +14,8 @@ router.get('/me', (req, res) => {
       name: req.user.name,
       email: req.user.email,
       avatar: req.user.avatar,
-      lastSeen: req.user.lastSeen
+      lastSeen: req.user.lastSeen,
+      wallpaper: req.user.wallpaper
     }
   });
 });

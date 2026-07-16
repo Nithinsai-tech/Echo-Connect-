@@ -125,12 +125,13 @@ const getOnlineUsers = async (req, res, next) => {
 // @route   PATCH /api/users/profile
 // @access  Private
 const updateProfile = async (req, res, next) => {
-  const { name, avatar } = req.body;
+  const { name, avatar, wallpaper } = req.body;
 
   try {
     const updateFields = {};
     if (name) updateFields.name = name;
     if (avatar) updateFields.avatar = avatar;
+    if (wallpaper !== undefined) updateFields.wallpaper = wallpaper;
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,

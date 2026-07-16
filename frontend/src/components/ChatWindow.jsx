@@ -1,26 +1,27 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, memo } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useChat } from '../hooks/useChat';
 import { useSocket } from '../hooks/useSocket';
 import { useToast } from '../context/ToastContext';
 import { useCall } from '../context/CallContext';
-import { 
-  formatMessageTime, 
-  formatLastSeen, 
-  formatMessageDateSeparator 
+import { updateUserProfile } from '../api/users';
+import {
+  formatMessageTime,
+  formatLastSeen,
+  formatMessageDateSeparator
 } from '../utils/formatTime';
 import { getInitials, getInitialsBg } from '../utils/getInitials';
-import { 
-  Paperclip, 
-  Smile, 
-  Send, 
-  Video, 
-  Phone, 
-  Search, 
-  MoreVertical, 
-  ArrowLeft, 
-  File, 
-  X, 
+import {
+  Paperclip,
+  Smile,
+  Send,
+  Video,
+  Phone,
+  Search,
+  MoreVertical,
+  ArrowLeft,
+  File,
+  X,
   Loader2,
   Download,
   PhoneOff,
@@ -48,21 +49,21 @@ const { VariableSizeList: List } = ReactWindow;
 // Checkmark SVGs for Read Receipts
 const SingleCheck = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="text-gray-400 dark:text-gray-500">
-    <path d="M5 12l5 5L20 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M5 12l5 5L20 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const DoubleCheckGray = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="text-gray-400 dark:text-gray-500">
-    <path d="M4 12l4 4L18 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M9 12l4 4L23 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M4 12l4 4L18 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 12l4 4L23 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const DoubleCheckBlue = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="text-sky-500 dark:text-sky-400">
-    <path d="M4 12l4 4L18 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M9 12l4 4L23 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M4 12l4 4L18 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 12l4 4L23 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -77,7 +78,7 @@ const renderHighlightText = (text, highlight) => {
   const parts = text.split(new RegExp(`(${escapeRegExp(highlight)})`, 'gi'));
   return (
     <span>
-      {parts.map((part, i) => 
+      {parts.map((part, i) =>
         part.toLowerCase() === highlight.toLowerCase() ? (
           <mark key={i} className="search-text-highlight bg-yellow-300 dark:bg-yellow-500 text-black px-0.5 rounded">{part}</mark>
         ) : (
@@ -113,7 +114,7 @@ const isSameSender = (msg1, msg2) => {
 
 const isEmojiOnly = (str) => {
   if (!str || typeof str !== 'string') return null;
-  
+
   const cleaned = str
     .replace(/\s+/g, '')
     .replace(/[\ufe00-\ufe0f]/g, '')
@@ -124,7 +125,7 @@ const isEmojiOnly = (str) => {
 
   const codePoints = Array.from(cleaned);
   const emojiRegex = /^\p{Emoji}$/u;
-  
+
   let count = 0;
   for (const cp of codePoints) {
     if (emojiRegex.test(cp)) {
@@ -153,7 +154,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
   const handleTouchStart = (e) => {
     setTouchStart(e.targetTouches[0].clientX);
     isLongPressActive.current = false;
-    
+
     // Start long press timer (550ms)
     longPressTimer.current = setTimeout(() => {
       isLongPressActive.current = true;
@@ -164,7 +165,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
   const handleTouchMove = (e) => {
     if (!touchStart) return;
     const diff = e.targetTouches[0].clientX - touchStart;
-    
+
     // Cancel long press if user moves finger significantly
     if (Math.abs(diff) > 8) {
       if (longPressTimer.current) {
@@ -172,7 +173,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         longPressTimer.current = null;
       }
     }
-    
+
     if (diff > 0 && diff < 80) {
       setSwipeOffset(diff);
     }
@@ -183,16 +184,16 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
-    
+
     if (swipeOffset > 45) {
       onReplySwipe(msg);
     }
-    
+
     if (isLongPressActive.current) {
       e.preventDefault();
       e.stopPropagation();
     }
-    
+
     setTouchStart(null);
     setSwipeOffset(0);
   };
@@ -211,7 +212,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
   let replyData = null;
   let forwardData = null;
   let callData = null;
-  
+
   if (msg.content && msg.content.startsWith('{"_echoType"')) {
     try {
       const parsed = JSON.parse(msg.content);
@@ -224,19 +225,19 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       } else if (parsed._echoType === 'call') {
         callData = parsed;
       }
-    } catch(e) {}
+    } catch (e) { }
   }
 
   const isRecorded = (() => {
     if (!callData) return false;
     const recordedList = JSON.parse(localStorage.getItem('echo_recorded_calls') || '[]');
-    const matchIndex = recordedList.findIndex(rec => 
+    const matchIndex = recordedList.findIndex(rec =>
       rec.messageId === msg._id || // 100% precise unique match
       (!rec.messageId &&
-       rec.roomId === msg.roomId &&
-       (rec.type === callData.callType || rec.mediaType === callData.callType) &&
-       (rec.callDuration === callData.duration || rec.duration === callData.duration) &&
-       Math.abs((rec.endTime || rec.endedAt) - new Date(msg.createdAt).getTime()) < 15000)
+        rec.roomId === msg.roomId &&
+        (rec.type === callData.callType || rec.mediaType === callData.callType) &&
+        (rec.callDuration === callData.duration || rec.duration === callData.duration) &&
+        Math.abs((rec.endTime || rec.endedAt) - new Date(msg.createdAt).getTime()) < 15000)
     );
     if (matchIndex !== -1) {
       const matchedRec = recordedList[matchIndex];
@@ -264,9 +265,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         onTouchCancel={handleTouchCancel}
         style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
         data-message-id={msg._id}
-        className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} ${
-          isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
-        } relative group transition-all duration-100`}
+        className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'} ${isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
+          } relative group transition-all duration-100`}
       >
         {/* Swipe Indicator Background */}
         {swipeOffset > 10 && (
@@ -315,11 +315,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                       e.stopPropagation();
                       onReaction(msg._id, emoji, hasReacted ? 'remove' : 'add');
                     }}
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold transition ${
-                      hasReacted 
-                        ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' 
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold transition ${hasReacted
+                        ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
                         : 'bg-black/25 border-white/5 text-gray-300 hover:bg-black/35'
-                    }`}
+                      }`}
                     title={`${userIds.length} reaction${userIds.length > 1 ? 's' : ''}`}
                   >
                     <span>{emoji}</span>
@@ -336,7 +335,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
 
   // Corner radius grouping class logic
   const bubbleCornersClass = isSelf
-    ? isConsecutive 
+    ? isConsecutive
       ? 'rounded-2xl rounded-tr-sm rounded-br-sm'
       : 'rounded-2xl rounded-tr-sm'
     : isConsecutive
@@ -367,11 +366,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       } else {
         return (
           <div
-            className={`msg-bubble shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 px-3 py-2 ${bubbleCornersClass} ${
-              isSelf 
-                ? 'bg-[var(--bubble-mine)] hover:bg-[#15803D] text-white' 
+            className={`msg-bubble shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 px-3 py-2 ${bubbleCornersClass} ${isSelf
+                ? 'bg-[var(--bubble-mine)] hover:bg-[#15803D] text-white'
                 : 'bg-[var(--bubble-theirs)] border-[#E0E0EA] dark:border-[#2C3045] hover:bg-[#E5E5E5] dark:hover:bg-[#3E4E68] text-[var(--bubble-theirs-text,var(--text-primary))]'
-            }`}
+              }`}
           >
             <button
               onClick={(e) => {
@@ -379,9 +377,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 e.preventDefault();
                 onContextMenu(e, msg._id, isSelf);
               }}
-              className={`absolute top-1 right-1 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${
-                isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-              }`}
+              className={`absolute top-1 right-1 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                }`}
               title="Message Actions"
             >
               <ChevronDown className="h-3.5 w-3.5" />
@@ -397,11 +394,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
               {contentText}
             </p>
 
-            <div className={`absolute bottom-1 right-2 flex items-center gap-1 text-[9px] ${
-              isSelf 
-                ? 'text-white/60' 
+            <div className={`absolute bottom-1 right-2 flex items-center gap-1 text-[9px] ${isSelf
+                ? 'text-white/60'
                 : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
-            }`}>
+              }`}>
               {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
               {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
               <span>{formatMessageTime(msg.createdAt)}</span>
@@ -429,9 +425,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         onTouchCancel={handleTouchCancel}
         style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
         data-message-id={msg._id}
-        className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${
-          isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
-        } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
+        className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
+          } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
       >
         {swipeOffset > 10 && (
           <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center text-orange-500 opacity-60">
@@ -447,9 +442,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 e.preventDefault();
                 onContextMenu(e, msg._id, isSelf);
               }}
-              className={`absolute top-0 -right-4 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${
-                isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-              }`}
+              className={`absolute top-0 -right-4 p-0.5 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                }`}
               title="Message Actions"
             >
               <ChevronDown className="h-3 w-3" />
@@ -463,11 +457,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
 
             {renderEmojiContent()}
 
-            <div className={`flex items-center justify-center gap-1 text-[9.5px] mt-0.5 select-none ${
-              isSelf 
-                ? 'text-gray-400' 
+            <div className={`flex items-center justify-center gap-1 text-[9.5px] mt-0.5 select-none ${isSelf
+                ? 'text-gray-400'
                 : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
-            }`}>
+              }`}>
               {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
               {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
               <span>{formatMessageTime(msg.createdAt)}</span>
@@ -503,11 +496,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                     e.stopPropagation();
                     onReaction(msg._id, emoji, hasReacted ? 'remove' : 'add');
                   }}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold transition ${
-                    hasReacted 
-                      ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' 
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold transition ${hasReacted
+                      ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
                       : 'bg-black/15 border-white/5 text-gray-300 hover:bg-black/25'
-                  }`}
+                    }`}
                   title={`${userIds.length} reaction${userIds.length > 1 ? 's' : ''}`}
                 >
                   <span>{emoji}</span>
@@ -530,9 +522,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       onTouchCancel={handleTouchCancel}
       style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
       data-message-id={msg._id}
-      className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${
-        isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
-      } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
+      className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
+        } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
     >
       {/* Swipe Indicator Background */}
       {swipeOffset > 10 && (
@@ -542,13 +533,11 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       )}
 
       <div
-        className={`msg-bubble max-w-[74%] md:max-w-[60%] lg:max-w-[520px] px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 ${bubbleCornersClass} ${
-          isImageOnly ? 'p-1.5' : ''
-        } ${
-          isSelf 
-            ? 'bg-[var(--bubble-mine)] hover:bg-[#15803D] text-white' 
+        className={`msg-bubble max-w-[74%] md:max-w-[60%] lg:max-w-[520px] px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 ${bubbleCornersClass} ${isImageOnly ? 'p-1.5' : ''
+          } ${isSelf
+            ? 'bg-[var(--bubble-mine)] hover:bg-[#15803D] text-white'
             : 'bg-[var(--bubble-theirs)] border-[#E0E0EA] dark:border-[#2C3045] hover:bg-[#E5E5E5] dark:hover:bg-[#3E4E68] text-[var(--bubble-theirs-text,var(--text-primary))]'
-        } ${isUnreadByMe ? 'message-bubble-incoming-unread' : ''}`}
+          } ${isUnreadByMe ? 'message-bubble-incoming-unread' : ''}`}
       >
         {/* Downward Chevron action button */}
         {!isDeleted && (
@@ -558,9 +547,8 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
               e.preventDefault();
               onContextMenu(e, msg._id, isSelf);
             }}
-            className={`absolute top-1.5 right-1.5 p-1 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${
-              isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
+            className={`absolute top-1.5 right-1.5 p-1 rounded-full bg-black/10 hover:bg-black/25 text-white/80 hover:text-white transition-opacity duration-150 z-20 msg-bubble-chevron ${isContextMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
             title="Message Actions"
           >
             <ChevronDown className="h-3.5 w-3.5" />
@@ -584,7 +572,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
 
         {/* Reply Quote preview */}
         {replyData && !isDeleted && (
-          <div 
+          <div
             onClick={(e) => {
               e.stopPropagation();
               const originalMessageEl = document.querySelector(`[data-message-id="${replyData.replyTo}"]`);
@@ -596,11 +584,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                 }, 2000);
               }
             }}
-            className={`mb-1.5 p-2 rounded border-l-4 border-orange-500 text-left text-xs cursor-pointer transition select-none max-w-[280px] md:max-w-[340px] w-full ${
-              isSelf 
-                ? 'bg-black/20 dark:bg-black/40 hover:bg-black/30' 
+            className={`mb-1.5 p-2 rounded border-l-4 border-orange-500 text-left text-xs cursor-pointer transition select-none max-w-[280px] md:max-w-[340px] w-full ${isSelf
+                ? 'bg-black/20 dark:bg-black/40 hover:bg-black/30'
                 : 'bg-black/8 dark:bg-black/45 hover:bg-black/15'
-            }`}
+              }`}
           >
             <div className="font-bold text-orange-500 dark:text-orange-400 text-[10px]">{replyData.replyToName}</div>
             <div className={`truncate text-[11px] mt-0.5 ${isSelf ? 'text-gray-300' : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-90'}`}>{replyData.replyToText}</div>
@@ -628,11 +615,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
               >
                 <File className="h-5 w-5 shrink-0" />
                 <div className="min-w-0 text-left">
-                  <p className={`truncate font-semibold ${
-                    isSelf 
-                      ? 'text-gray-200' 
+                  <p className={`truncate font-semibold ${isSelf
+                      ? 'text-gray-200'
                       : 'text-[var(--bubble-theirs-text,var(--text-primary))]'
-                  }`}>
+                    }`}>
                     {msg.mediaUrl.split('/').pop().split('?')[0] || 'Attachment'}
                   </p>
                   <p className={`text-[10px] ${isSelf ? 'text-gray-400' : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'}`}>Click to open/download</p>
@@ -660,15 +646,14 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
             <div className={`flex flex-col gap-1 mt-1.5 border-t pt-1.5 ${isSelf ? 'border-white/10' : 'border-gray-200 dark:border-gray-700'}`}>
               <div className="flex items-center justify-between text-[11px] opacity-90">
                 <span>Status:</span>
-                <span className={`font-semibold ${
-                  callData.callStatus === 'completed' 
-                    ? 'text-emerald-500 dark:text-emerald-400' 
+                <span className={`font-semibold ${callData.callStatus === 'completed'
+                    ? 'text-emerald-500 dark:text-emerald-400'
                     : 'text-red-500 dark:text-red-400 font-medium'
-                }`}>
-                  {callData.callStatus === 'completed' 
-                    ? 'Completed' 
-                    : callData.callStatus === 'missed' 
-                      ? 'Missed' 
+                  }`}>
+                  {callData.callStatus === 'completed'
+                    ? 'Completed'
+                    : callData.callStatus === 'missed'
+                      ? 'Missed'
                       : callData.callStatus === 'rejected'
                         ? 'Rejected'
                         : 'Missed'
@@ -701,13 +686,12 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         )}
 
         {/* Message Footer: Time + Pinned/Starred + Ticks */}
-        <div className={`absolute bottom-1.5 right-2.5 flex items-center gap-1 text-[9px] ${
-          isImageOnly 
-            ? 'bg-black/55 text-white/90 rounded-full px-2 py-0.5 backdrop-blur-[2px] z-10' 
-            : isSelf 
-              ? 'text-white/60' 
+        <div className={`absolute bottom-1.5 right-2.5 flex items-center gap-1 text-[9px] ${isImageOnly
+            ? 'bg-black/55 text-white/90 rounded-full px-2 py-0.5 backdrop-blur-[2px] z-10'
+            : isSelf
+              ? 'text-white/60'
               : 'text-[var(--bubble-theirs-text,var(--text-secondary))] opacity-75'
-        }`}>
+          }`}>
           {isStarred && <Star className="h-2.5 w-2.5 text-orange-500 fill-orange-500 shrink-0" />}
           {msg.isPinned && <Pin className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 shrink-0 rotate-45" />}
           <span>{formatMessageTime(msg.createdAt)}</span>
@@ -740,11 +724,10 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
                     e.stopPropagation();
                     onReaction(msg._id, emoji, hasReacted ? 'remove' : 'add');
                   }}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold transition ${
-                    hasReacted 
-                      ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' 
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold transition ${hasReacted
+                      ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
                       : 'bg-black/10 border-white/5 text-gray-300 hover:bg-black/20'
-                  }`}
+                    }`}
                   title={`${userIds.length} reaction${userIds.length > 1 ? 's' : ''}`}
                 >
                   <span>{emoji}</span>
@@ -791,17 +774,36 @@ const STICKER_LIST = [
   { id: 'coffee_hug', name: 'Coffee Cup', url: '/stickers/coffee_hug.svg' }
 ];
 
+const BUILTIN_WALLPAPERS = [
+  { id: 'default', name: 'Default Gradient', value: 'var(--chat-bg-gradient)', type: 'gradient', category: 'Default' },
+  { id: 'dark-abstract', name: 'Dark Abstract', value: 'linear-gradient(135deg, #1e1b4b 0%, #311042 50%, #0f172a 100%)', type: 'gradient', category: 'Dark Abstract' },
+  { id: 'light-abstract', name: 'Light Abstract', value: 'linear-gradient(135deg, #fef08a 0%, #f472b6 100%)', type: 'gradient', category: 'Light Abstract' },
+  { id: 'minimal-gradient', name: 'Minimal Gradient', value: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', type: 'gradient', category: 'Minimal Gradient' },
+  { id: 'glassmorphism', name: 'Glass Morphism', value: 'linear-gradient(135deg, #090d16 0%, #1a1528 50%, #090d16 100%)', type: 'gradient', category: 'Glass Morphism' },
+  { id: 'modern-geometry', name: 'Modern Geometry', value: 'linear-gradient(135deg, #27272a 0%, #09090b 100%)', type: 'gradient', category: 'Modern Geometry' },
+  { id: 'nature', name: 'Nature Forest', value: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=60', type: 'image', category: 'Nature' },
+  { id: 'mountains', name: 'Mountains Peak', value: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=60', type: 'image', category: 'Mountains' },
+  { id: 'ocean', name: 'Deep Ocean', value: 'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&w=800&q=60', type: 'image', category: 'Ocean' },
+  { id: 'night-sky', name: 'Night Sky Stardust', value: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=800&q=60', type: 'image', category: 'Night Sky' },
+  { id: 'aurora', name: 'Green Aurora', value: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?auto=format&fit=crop&w=800&q=60', type: 'image', category: 'Aurora' },
+  { id: 'minimal-black', name: 'Minimal Black', value: '#050505', type: 'color', category: 'Minimal Black' },
+  { id: 'carbon-texture', name: 'Carbon Texture', value: 'linear-gradient(45deg, #121212 25%, #181818 25%, #181818 50%, #121212 50%, #121212 75%, #181818 75%, #181818 100%)', type: 'gradient', category: 'Carbon Texture' },
+  { id: 'soft-beige', name: 'Soft Beige', value: '#F5F5DC', type: 'color', category: 'Soft Beige' },
+  { id: 'blue-gradient', name: 'Sky Blue Gradient', value: 'linear-gradient(135deg, #a5f3fc 0%, #38bdf8 100%)', type: 'gradient', category: 'Blue Gradient' },
+  { id: 'premium-dark-mode', name: 'Premium Dark', value: '#0e111a', type: 'color', category: 'Premium Dark Mode' }
+];
+
 const ChatWindow = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { addToast } = useToast();
   const { startVoiceCall, startVideoCall } = useCall();
-  const { 
-    activeRoom, 
-    messages, 
-    typingUsers, 
-    sendMessage, 
-    uploadAttachmentFile, 
-    deleteMessageForMe, 
+  const {
+    activeRoom,
+    messages,
+    typingUsers,
+    sendMessage,
+    uploadAttachmentFile,
+    deleteMessageForMe,
     selectRoom,
     loadingMessages,
     hasMoreMessages,
@@ -820,7 +822,7 @@ const ChatWindow = () => {
     deleteMessageForEveryoneAction,
     bulkDeleteMessagesAction
   } = useChat();
-  
+
   const socket = useSocket();
 
   const isGroup = activeRoom?.type === 'group';
@@ -840,7 +842,7 @@ const ChatWindow = () => {
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
 
   const handleSelectMessage = (messageId) => {
-    setSelectedMessageIds(prev => 
+    setSelectedMessageIds(prev =>
       prev.includes(messageId)
         ? prev.filter(id => id !== messageId)
         : [...prev, messageId]
@@ -858,6 +860,39 @@ const ChatWindow = () => {
   const [forwardingMessage, setForwardingMessage] = useState(null);
   const [selectedForwardRooms, setSelectedForwardRooms] = useState([]);
   const [forwardSearchQuery, setForwardSearchQuery] = useState('');
+
+  // Wallpaper configuration states
+  const wallpaperConfig = React.useMemo(() => {
+    if (!user?.wallpaper) return { global: null, rooms: {} };
+    try {
+      return JSON.parse(user.wallpaper);
+    } catch (e) {
+      console.error('Failed to parse wallpaper:', e);
+      return { global: null, rooms: {} };
+    }
+  }, [user?.wallpaper]);
+
+  const [previewWp, setPreviewWp] = useState(null);
+  const [blurValue, setBlurValue] = useState(0);
+
+  const activeWallpaper = React.useMemo(() => {
+    if (!activeRoom) return null;
+    const roomWp = wallpaperConfig?.rooms?.[activeRoom._id];
+    if (roomWp) return roomWp;
+    return wallpaperConfig?.global || { value: 'var(--chat-bg-gradient)', type: 'gradient', id: 'default', blur: 0 };
+  }, [activeRoom, wallpaperConfig]);
+
+  const displayedWallpaper = previewWp || activeWallpaper;
+  const displayedBlur = previewWp ? blurValue : (activeWallpaper?.blur || 0);
+
+  // Sync blur value when active room changes
+  useEffect(() => {
+    if (activeRoom && wallpaperConfig) {
+      const roomWp = wallpaperConfig?.rooms?.[activeRoom._id];
+      const wp = roomWp || wallpaperConfig?.global;
+      setBlurValue(wp?.blur || 0);
+    }
+  }, [activeRoom, wallpaperConfig]);
 
   // Conversation Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -960,7 +995,7 @@ const ChatWindow = () => {
           } else if (parsed.text) {
             textContent = parsed.text;
           }
-        } catch (e) {}
+        } catch (e) { }
       }
       if (textContent.toLowerCase().includes(query)) {
         matches.push({ id: msg._id, index: idx });
@@ -976,10 +1011,10 @@ const ChatWindow = () => {
   const scrollToSearchMatch = (idx, matchesList = searchResults) => {
     const match = matchesList[idx];
     if (!match) return;
-    
+
     // Virtualized list scroll
     listRef.current?.scrollToItem(match.index, 'center');
-    
+
     // Highlight flash
     setTimeout(() => {
       const el = document.querySelector(`[data-message-id="${match.id}"]`);
@@ -1008,18 +1043,18 @@ const ChatWindow = () => {
       const rect = menu.getBoundingClientRect();
       const width = rect.width || 220;
       const height = rect.height || 320;
-      
+
       let newX = contextMenu.x;
       let newY = contextMenu.y;
 
       if (contextMenu.y + height > window.innerHeight) {
         newY = Math.max(10, contextMenu.y - height);
       }
-      
+
       if (contextMenu.x + width > window.innerWidth) {
         newX = Math.max(10, window.innerWidth - width - 10);
       }
-      
+
       menu.style.top = `${newY}px`;
       menu.style.left = `${newX}px`;
     }
@@ -1036,7 +1071,7 @@ const ChatWindow = () => {
       window.addEventListener('wheel', preventDefault, { passive: false });
       window.addEventListener('touchmove', preventDefault, { passive: false });
       document.body.style.overflow = 'hidden';
-      
+
       return () => {
         window.removeEventListener('wheel', preventDefault);
         window.removeEventListener('touchmove', preventDefault);
@@ -1205,7 +1240,7 @@ const ChatWindow = () => {
   // Textarea typing start/stop trigger emitters
   const handleTextareaChange = (e) => {
     setText(e.target.value);
-    
+
     const textarea = e.target;
     textarea.style.height = 'auto';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
@@ -1231,7 +1266,7 @@ const ChatWindow = () => {
     setSending(true);
     const content = text.trim();
     setText('');
-    
+
     const textarea = document.getElementById('chat-input-textarea');
     if (textarea) {
       textarea.style.height = 'auto';
@@ -1289,7 +1324,7 @@ const ChatWindow = () => {
   const getItemSize = (index) => {
     const msg = messages[index];
     if (!msg) return 50;
-    
+
     let size = 55;
     if (msg.content) {
       size += Math.ceil(msg.content.length / 45) * 20;
@@ -1300,21 +1335,21 @@ const ChatWindow = () => {
     } else if (msg.mediaUrl) {
       size += msg.type === 'image' ? 255 : 70;
     }
-    
+
     // Check if date boundary separator is rendered above the message
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
     if (showSeparator) {
       size += 40;
     }
-    
+
     const isConsecutive = prevMsg && !showSeparator && isSameSender(prevMsg, msg);
     if (isConsecutive) {
       size -= 8;
     } else {
       size += 4;
     }
-    
+
     return size;
   };
 
@@ -1325,7 +1360,7 @@ const ChatWindow = () => {
           {/* Logo: Orange circle 56px + white speech bubble */}
           <div className="w-14 h-14 rounded-full bg-[#FF6A00] flex items-center justify-center mb-4 shadow-md">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z" fill="white"/>
+              <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z" fill="white" />
             </svg>
           </div>
           {/* Echo Connect split color text */}
@@ -1341,10 +1376,10 @@ const ChatWindow = () => {
     );
   }
 
-  const statusSubtitle = isGroup 
+  const statusSubtitle = isGroup
     ? `${activeRoom.participants.length} participants`
-    : partner?.isOnline 
-      ? 'Online' 
+    : partner?.isOnline
+      ? 'Online'
       : formatLastSeen(partner?.lastSeen);
 
   // Row Renderer function for VariableSizeList message virtualization
@@ -1354,7 +1389,7 @@ const ChatWindow = () => {
 
     const isSelf = isMessageFromSelf(msg, user);
     const isUnreadByMe = !isSelf && !msg.seenBy?.includes(user?._id);
-    
+
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
     const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
@@ -1370,7 +1405,7 @@ const ChatWindow = () => {
             </span>
           </div>
         )}
-        <div 
+        <div
           className={`flex items-center gap-3 w-full cursor-pointer hover:bg-gray-150/10 dark:hover:bg-gray-850/10 rounded-xl transition ${isSelected ? 'bg-orange-500/5' : ''}`}
           onClick={(e) => {
             if (isSelectMode) {
@@ -1381,11 +1416,10 @@ const ChatWindow = () => {
         >
           {isSelectMode && (
             <div className="shrink-0 pl-1">
-              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                isSelected 
-                  ? 'bg-[#FF6A00] border-[#FF6A00] text-white scale-110' 
+              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
+                  ? 'bg-[#FF6A00] border-[#FF6A00] text-white scale-110'
                   : 'border-[#4D536E] bg-[#161925]'
-              }`}>
+                }`}>
                 {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
               </div>
             </div>
@@ -1452,7 +1486,7 @@ const ChatWindow = () => {
                 className="h-full w-full rounded-full object-cover"
               />
             ) : (
-              <div 
+              <div
                 className="flex h-full w-full items-center justify-center rounded-full text-white text-xs font-bold uppercase"
                 style={{ backgroundColor: getInitialsBg(roomTitle) }}
               >
@@ -1467,15 +1501,14 @@ const ChatWindow = () => {
           {/* Status Subtitle text */}
           <div className="flex flex-col min-w-0">
             <span onClick={() => setActiveRightPanel('info')} className="truncate text-[15px] font-bold text-[#0D0D18] dark:text-[#F5F5FF] cursor-pointer hover:underline">{roomTitle}</span>
-            <span 
+            <span
               onClick={() => setActiveRightPanel('info')}
-              className={`truncate text-xs cursor-pointer select-none ${
-                isGroup 
-                  ? 'text-[#FF6A00] hover:underline font-semibold' 
-                  : partner?.isOnline 
-                    ? 'text-[#22C55E] font-medium' 
+              className={`truncate text-xs cursor-pointer select-none ${isGroup
+                  ? 'text-[#FF6A00] hover:underline font-semibold'
+                  : partner?.isOnline
+                    ? 'text-[#22C55E] font-medium'
                     : 'text-[#9090A8] dark:text-[#55556A]'
-              }`}
+                }`}
             >
               {statusSubtitle}
             </span>
@@ -1484,23 +1517,23 @@ const ChatWindow = () => {
 
         {/* Calling & Option buttons */}
         <div className="flex items-center gap-1 md:gap-1.5 text-gray-600 dark:text-gray-400 relative">
-          <button 
+          <button
             onClick={() => startVideoCall(partner?._id, activeRoom?._id, partner?.name, partner?.avatar)}
-            className="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition" 
-            title="Video Call" 
+            className="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+            title="Video Call"
             aria-label="Video Call"
           >
             <Video className="h-5 w-5" />
           </button>
-          <button 
+          <button
             onClick={() => startVoiceCall(partner?._id, activeRoom?._id, partner?.name, partner?.avatar)}
-            className="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition" 
-            title="Voice Call" 
+            className="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+            title="Voice Call"
             aria-label="Voice Call"
           >
             <Phone className="h-5 w-5" />
           </button>
-          <button 
+          <button
             onClick={() => {
               setSearchOpen(!searchOpen);
               if (!searchOpen) {
@@ -1512,22 +1545,21 @@ const ChatWindow = () => {
                 setSearchResults([]);
               }
             }}
-            className={`rounded-full p-2 transition ${
-              searchOpen 
-                ? 'text-[#FF6A00] bg-gray-200 dark:bg-gray-700' 
+            className={`rounded-full p-2 transition ${searchOpen
+                ? 'text-[#FF6A00] bg-gray-200 dark:bg-gray-700'
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`} 
-            title="Search Chat" 
+              }`}
+            title="Search Chat"
             aria-label="Search inside chat"
           >
             <Search className="h-5 w-5" />
           </button>
-          <button 
+          <button
             onClick={(e) => {
               e.stopPropagation();
               setIsOptionsMenuOpen(!isOptionsMenuOpen);
             }}
-            className="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition" 
+            className="rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
             title="Options"
             aria-label="Room Settings Options"
           >
@@ -1536,8 +1568,8 @@ const ChatWindow = () => {
 
           {/* Options Dropdown Menu */}
           {isOptionsMenuOpen && (
-            <div 
-              onClick={(e) => e.stopPropagation()} 
+            <div
+              onClick={(e) => e.stopPropagation()}
               className="absolute right-0 top-11 z-30 w-48 rounded-lg bg-white dark:bg-gray-800 py-1.5 shadow-xl border border-gray-200 dark:border-gray-700 transition duration-100 ease-out transform origin-top-right text-gray-800 dark:text-gray-200"
             >
               {isGroup ? (
@@ -1678,131 +1710,145 @@ const ChatWindow = () => {
         </div>
       )}
 
-      <main ref={containerRef} className="flex-1 overflow-y-auto py-3 relative min-h-0" style={{ background: 'var(--chat-wallpaper, var(--chat-bg-gradient))' }}>
-        <div className="max-w-[960px] mx-auto w-full h-full flex flex-col relative">
-          {loadingMessages && messages.length === 0 ? (
-            /* SKELETON LOADER FOR MESSAGES LIST */
-            <div className="flex flex-col space-y-4 px-4 py-3 h-full justify-end w-full">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className={`flex w-full ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`h-12 w-1/3 rounded-lg skeleton-shimmer ${i % 2 === 0 ? 'rounded-tr-none' : 'rounded-tl-none'}`} />
-                </div>
-              ))}
-            </div>
-          ) : messages.length === 0 ? (
-            /* EMPTY STATE inside room: "Say hello!" */
-            <div className="flex flex-1 flex-col items-center justify-center p-8 py-24 text-center h-full w-full">
-              <span className="text-4xl mb-3 block">👋</span>
-              <h3 className="text-base font-bold text-gray-700 dark:text-gray-200">Say hello!</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Send a message to start this conversation.</p>
-            </div>
-          ) : messages.length > 100 ? (
-            /* VIRTUALIZED SCROLL LIST FOR 100+ MESSAGES */
-            <List
-              ref={listRef}
-              height={containerHeight}
-              itemCount={messages.length}
-              itemSize={getItemSize}
-              width="100%"
-            >
-              {VirtualizedRow}
-            </List>
-          ) : (
-            /* STANDARD SCROLL AREA FOR SMALLER MESSAGES LISTS */
-            <div className="px-4 md:px-5 w-full flex-1">
-              {/* Pagination Load Button */}
-              {hasMoreMessages && (
-                <div className="flex justify-center pb-3">
-                  <button
-                    onClick={loadMoreMessages}
-                    disabled={loadingMessages}
-                    className="rounded-full bg-white dark:bg-gray-800 px-4 py-1.5 text-xs font-semibold text-[#075E54] dark:text-[#075e54] shadow hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition"
-                    aria-label="Load older messages"
-                  >
-                    {loadingMessages ? 'Loading older...' : 'Load older messages'}
-                  </button>
-                </div>
-              )}
+      <div className="flex-1 relative min-h-0 bg-[#0B0E17] overflow-hidden">
+        {/* Dynamic Wallpaper Backdrop */}
+        <div
+          className="absolute inset-0 pointer-events-none transition-all duration-300 select-none z-0"
+          style={{
+            background: displayedWallpaper?.type === 'image' ? `url("${displayedWallpaper.value}")` : (displayedWallpaper?.value || 'var(--chat-bg-gradient)'),
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            filter: displayedBlur > 0 ? `blur(${displayedBlur}px)` : 'none',
+            transform: displayedBlur > 0 ? 'scale(1.1)' : 'none', // scale prevents white edges during blur
+          }}
+        />
 
-              {messages.map((msg, index) => {
-                const isSelf = isMessageFromSelf(msg, user);
-                const isUnreadByMe = !isSelf && !msg.seenBy?.includes(user?._id);
-                
-                const prevMsg = index > 0 ? messages[index - 1] : null;
-                const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-                const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
-
-                const isSelected = selectedMessageIds.includes(msg._id);
-
-                return (
-                  <div key={msg._id}>
-                    {showDateSeparator && (
-                      <div className="flex justify-center my-3">
-                        <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/85 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
-                          {formatMessageDateSeparator(msg.createdAt)}
-                        </span>
-                      </div>
-                    )}
-                    <div 
-                      className={`flex items-center gap-3 w-full cursor-pointer hover:bg-gray-150/10 dark:hover:bg-gray-880/10 rounded-xl transition ${isSelected ? 'bg-orange-500/5' : ''}`}
-                      onClick={(e) => {
-                        if (isSelectMode) {
-                          e.stopPropagation();
-                          handleSelectMessage(msg._id);
-                        }
-                      }}
+        <main ref={containerRef} className="absolute inset-0 overflow-y-auto py-3 z-10 bg-transparent">
+          <div className="max-w-[960px] mx-auto w-full h-full flex flex-col relative">
+            {loadingMessages && messages.length === 0 ? (
+              /* SKELETON LOADER FOR MESSAGES LIST */
+              <div className="flex flex-col space-y-4 px-4 py-3 h-full justify-end w-full">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className={`flex w-full ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`h-12 w-1/3 rounded-lg skeleton-shimmer ${i % 2 === 0 ? 'rounded-tr-none' : 'rounded-tl-none'}`} />
+                  </div>
+                ))}
+              </div>
+            ) : messages.length === 0 ? (
+              /* EMPTY STATE inside room: "Say hello!" */
+              <div className="flex flex-1 flex-col items-center justify-center p-8 py-24 text-center h-full w-full">
+                <span className="text-4xl mb-3 block">👋</span>
+                <h3 className="text-base font-bold text-gray-700 dark:text-gray-200">Say hello!</h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Send a message to start this conversation.</p>
+              </div>
+            ) : messages.length > 100 ? (
+              /* VIRTUALIZED SCROLL LIST FOR 100+ MESSAGES */
+              <List
+                ref={listRef}
+                height={containerHeight}
+                itemCount={messages.length}
+                itemSize={getItemSize}
+                width="100%"
+              >
+                {VirtualizedRow}
+              </List>
+            ) : (
+              /* STANDARD SCROLL AREA FOR SMALLER MESSAGES LISTS */
+              <div className="px-4 md:px-5 w-full flex-1">
+                {/* Pagination Load Button */}
+                {hasMoreMessages && (
+                  <div className="flex justify-center pb-3">
+                    <button
+                      onClick={loadMoreMessages}
+                      disabled={loadingMessages}
+                      className="rounded-full bg-white dark:bg-gray-800 px-4 py-1.5 text-xs font-semibold text-[#075E54] dark:text-[#075e54] shadow hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition"
+                      aria-label="Load older messages"
                     >
-                      {isSelectMode && (
-                        <div className="shrink-0 pl-1">
-                          <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                            isSelected 
-                              ? 'bg-[#FF6A00] border-[#FF6A00] text-white scale-110' 
-                              : 'border-[#4D536E] bg-[#161925]'
-                          }`}>
-                            {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                          </div>
+                      {loadingMessages ? 'Loading older...' : 'Load older messages'}
+                    </button>
+                  </div>
+                )}
+
+                {messages.map((msg, index) => {
+                  const isSelf = isMessageFromSelf(msg, user);
+                  const isUnreadByMe = !isSelf && !msg.seenBy?.includes(user?._id);
+
+                  const prevMsg = index > 0 ? messages[index - 1] : null;
+                  const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+                  const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
+
+                  const isSelected = selectedMessageIds.includes(msg._id);
+
+                  return (
+                    <div key={msg._id}>
+                      {showDateSeparator && (
+                        <div className="flex justify-center my-3">
+                          <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/85 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
+                            {formatMessageDateSeparator(msg.createdAt)}
+                          </span>
                         </div>
                       )}
-                      <div className="flex-1 min-w-0">
-                        <MessageItem
-                          msg={msg}
-                          isSelf={isSelf}
-                          isGroup={isGroup}
-                          isUnreadByMe={isUnreadByMe}
-                          onContextMenu={handleContextMenu}
-                          onImageClick={setActiveImage}
-                          onReplySwipe={setReplyingToMessage}
-                          onReaction={sendReaction}
-                          starredMessages={starredMessages}
-                          currentUser={user}
-                          searchQuery={searchQuery}
-                          isConsecutive={isConsecutive}
-                          isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
-                        />
+                      <div
+                        className={`flex items-center gap-3 w-full cursor-pointer hover:bg-gray-150/10 dark:hover:bg-gray-880/10 rounded-xl transition ${isSelected ? 'bg-orange-500/5' : ''}`}
+                        onClick={(e) => {
+                          if (isSelectMode) {
+                            e.stopPropagation();
+                            handleSelectMessage(msg._id);
+                          }
+                        }}
+                      >
+                        {isSelectMode && (
+                          <div className="shrink-0 pl-1">
+                            <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
+                                ? 'bg-[#FF6A00] border-[#FF6A00] text-white scale-110'
+                                : 'border-[#4D536E] bg-[#161925]'
+                              }`}>
+                              {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <MessageItem
+                            msg={msg}
+                            isSelf={isSelf}
+                            isGroup={isGroup}
+                            isUnreadByMe={isUnreadByMe}
+                            onContextMenu={handleContextMenu}
+                            onImageClick={setActiveImage}
+                            onReplySwipe={setReplyingToMessage}
+                            onReaction={sendReaction}
+                            starredMessages={starredMessages}
+                            currentUser={user}
+                            searchQuery={searchQuery}
+                            isConsecutive={isConsecutive}
+                            isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-              
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+                  );
+                })}
 
-          {/* Bouncing Typing indicator */}
-          {Object.keys(typingUsers).filter(uid => uid !== user?._id).length > 0 && (
-            <div className="absolute bottom-2 left-4 z-10 flex justify-start">
-              <div className="rounded-lg rounded-tl-none bg-white dark:bg-gray-700 px-3.5 py-2.5 shadow-md">
-                <div className="flex items-center space-x-1.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0s' }} />
-                  <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.15s' }} />
-                  <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.3s' }} />
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+
+            {/* Bouncing Typing indicator */}
+            {Object.keys(typingUsers).filter(uid => uid !== user?._id).length > 0 && (
+              <div className="absolute bottom-2 left-4 z-10 flex justify-start">
+                <div className="rounded-lg rounded-tl-none bg-white dark:bg-gray-700 px-3.5 py-2.5 shadow-md">
+                  <div className="flex items-center space-x-1.5">
+                    <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0s' }} />
+                    <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.15s' }} />
+                    <div className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500 typer-dot" style={{ animationDelay: '0.3s' }} />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      </main>
+            )}
+          </div>
+        </main>
+      </div>
 
       {/* 3. ATTACHMENT FLOATING LOADER */}
       {uploadProgress && (
@@ -1829,21 +1875,19 @@ const ChatWindow = () => {
           <div className="flex border-b border-gray-200 dark:border-gray-700 p-2 shrink-0">
             <button
               onClick={() => setActivePickerTab('emojis')}
-              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg transition-all ${
-                activePickerTab === 'emojis'
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg transition-all ${activePickerTab === 'emojis'
                   ? 'bg-[#075E54] text-white'
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
+                }`}
             >
               Emojis
             </button>
             <button
               onClick={() => setActivePickerTab('stickers')}
-              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg transition-all ${
-                activePickerTab === 'stickers'
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg transition-all ${activePickerTab === 'stickers'
                   ? 'bg-[#075E54] text-white'
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
+                }`}
             >
               Stickers
             </button>
@@ -1898,18 +1942,18 @@ const ChatWindow = () => {
               Replying to {replyingToMessage.senderId?._id === user?._id ? 'yourself' : (replyingToMessage.senderId?.name || 'User')}
             </span>
             <span className="text-[11px] text-gray-300 truncate mt-0.5">
-              {replyingToMessage.content && replyingToMessage.content.startsWith('{"_echoType"') 
-                ? (() => { 
-                    try { 
-                      const parsed = JSON.parse(replyingToMessage.content); 
-                      if (parsed._echoType === 'call') {
-                        return `${parsed.callType === 'video' ? 'Video' : 'Voice'} Call (${parsed.callStatus})`;
-                      }
-                      return parsed.text || 'Media/Attachment'; 
-                    } catch(e) { 
-                      return replyingToMessage.content; 
-                    } 
-                  })()
+              {replyingToMessage.content && replyingToMessage.content.startsWith('{"_echoType"')
+                ? (() => {
+                  try {
+                    const parsed = JSON.parse(replyingToMessage.content);
+                    if (parsed._echoType === 'call') {
+                      return `${parsed.callType === 'video' ? 'Video' : 'Voice'} Call (${parsed.callStatus})`;
+                    }
+                    return parsed.text || 'Media/Attachment';
+                  } catch (e) {
+                    return replyingToMessage.content;
+                  }
+                })()
                 : replyingToMessage.content || 'Media/Attachment'}
             </span>
           </div>
@@ -1995,10 +2039,10 @@ const ChatWindow = () => {
           </div>
         </footer>
       ) : (
-        <footer 
+        <footer
           className="chat-input-footer flex shrink-0 items-end gap-2 px-3 py-2.5 z-10"
-          style={{ 
-            paddingBottom: 'calc(10px + env(safe-area-inset-bottom))' 
+          style={{
+            paddingBottom: 'calc(10px + env(safe-area-inset-bottom))'
           }}
         >
           <div className="flex items-center gap-1">
@@ -2019,11 +2063,10 @@ const ChatWindow = () => {
 
             <button
               onClick={() => setIsPickerOpen(!isPickerOpen)}
-              className={`rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition ${
-                isPickerOpen
+              className={`rounded-full p-2 hover:bg-gray-200 dark:hover:bg-gray-700 transition ${isPickerOpen
                   ? 'text-[#FF6A00] bg-gray-200 dark:bg-gray-700'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+                }`}
               title="Emojis and Stickers"
               aria-label="Add emojis"
             >
@@ -2065,28 +2108,28 @@ const ChatWindow = () => {
 
       {/* 5. UNIFIED DETAILS AND MEDIA PANEL */}
       {activeRightPanel && (
-        <div 
+        <div
           className="absolute right-0 top-0 h-full w-80 border-l border-[#2C3045] shadow-2xl z-20 flex flex-col transition-all duration-300"
           style={{ backgroundColor: 'var(--bg-panel)' }}
         >
           {/* Panel Header */}
           <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#2C3045] px-4 animate-in slide-in-from-right" style={{ backgroundColor: 'var(--bg-surface)' }}>
-            <div className="flex items-center gap-2">
-              <button 
+            <div className="flex items-center gap-1">
+              <button
                 onClick={() => setActiveRightPanel('info')}
-                className={`text-xs font-bold px-2.5 py-1 rounded transition ${activeRightPanel === 'info' ? 'bg-[#FF6A00] text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}
+                className={`text-[10.5px] font-bold px-2 py-1 rounded transition ${activeRightPanel === 'info' ? 'bg-[#FF6A00] text-white' : 'text-gray-400 hover:text-white'}`}
               >
                 Details
               </button>
-              <button 
+              <button
                 onClick={() => setActiveRightPanel('media')}
-                className={`text-xs font-bold px-2.5 py-1 rounded transition ${activeRightPanel === 'media' ? 'bg-[#FF6A00] text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}
+                className={`text-[10.5px] font-bold px-2 py-1 rounded transition ${activeRightPanel === 'media' ? 'bg-[#FF6A00] text-white' : 'text-gray-400 hover:text-white'}`}
               >
                 Media
               </button>
             </div>
-            <button 
-              onClick={() => setActiveRightPanel(null)} 
+            <button
+              onClick={() => setActiveRightPanel(null)}
               className="p-1.5 rounded-full hover:bg-white/5 text-gray-400"
               aria-label="Close side panel"
             >
@@ -2096,7 +2139,7 @@ const ChatWindow = () => {
 
           {/* Panel Body */}
           <div className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-thin text-white">
-            {activeRightPanel === 'info' ? (
+            {activeRightPanel === 'info' && (
               <>
                 {/* Avatar & Basic Info */}
                 <div className="flex flex-col items-center text-center pb-4 border-b border-[#2C3045]">
@@ -2111,9 +2154,8 @@ const ChatWindow = () => {
                   </div>
                   <h3 className="text-sm font-bold text-gray-100">{roomTitle}</h3>
                   {!isGroup && <p className="text-[11px] text-gray-400 mt-0.5">{partner?.email}</p>}
-                  <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    isGroup ? 'bg-orange-500/10 text-orange-400' : partner?.isOnline ? 'bg-green-500/10 text-green-400' : 'bg-gray-800 text-gray-400'
-                  }`}>
+                  <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${isGroup ? 'bg-orange-500/10 text-orange-400' : partner?.isOnline ? 'bg-green-500/10 text-green-400' : 'bg-gray-800 text-gray-400'
+                    }`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${isGroup ? 'bg-orange-500' : partner?.isOnline ? 'bg-green-500' : 'bg-gray-500'}`} />
                     {isGroup ? `${activeRoom.participants.length} Members` : partner?.isOnline ? 'Online' : 'Offline'}
                   </span>
@@ -2152,10 +2194,10 @@ const ChatWindow = () => {
                             } else if (parsed.text) {
                               previewText = parsed.text;
                             }
-                          } catch(e) {}
+                          } catch (e) { }
                         }
                         return (
-                          <div 
+                          <div
                             key={msg._id}
                             onClick={() => {
                               const el = document.querySelector(`[data-message-id="${msg._id}"]`);
@@ -2209,7 +2251,9 @@ const ChatWindow = () => {
                   </div>
                 )}
               </>
-            ) : (
+            )}
+
+            {activeRightPanel === 'media' && (
               /* Media Tab Shared media files grid */
               <div className="space-y-3">
                 <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Shared Media</h4>
@@ -2218,15 +2262,15 @@ const ChatWindow = () => {
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     {messages.filter(m => m.mediaUrl && m.type === 'image').map((msg) => (
-                      <div 
-                        key={msg._id} 
+                      <div
+                        key={msg._id}
                         onClick={() => setActiveImage(msg.mediaUrl)}
                         className="aspect-square rounded overflow-hidden cursor-zoom-in bg-white/5 border border-white/5 hover:border-orange-500/50 transition duration-150 animate-in fade-in zoom-in-95"
                       >
-                        <img 
-                          src={msg.mediaUrl} 
-                          alt="Shared Media" 
-                          className="h-full w-full object-cover hover:scale-108 transition duration-200" 
+                        <img
+                          src={msg.mediaUrl}
+                          alt="Shared Media"
+                          className="h-full w-full object-cover hover:scale-108 transition duration-200"
                         />
                       </div>
                     ))}
@@ -2240,14 +2284,14 @@ const ChatWindow = () => {
 
       {/* 6. FULLSCREEN IMAGE LIGHTBOX VIEWER */}
       {activeImage && (
-        <div 
+        <div
           onClick={() => setActiveImage(null)}
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4 transition-opacity duration-300"
         >
           {/* Controls Bar */}
           <div className="absolute right-4 top-4 flex items-center gap-2">
-            <a 
-              href={activeImage} 
+            <a
+              href={activeImage}
               download
               target="_blank"
               rel="noopener noreferrer"
@@ -2258,7 +2302,7 @@ const ChatWindow = () => {
             >
               <Download className="h-5 w-5" />
             </a>
-            <button 
+            <button
               onClick={() => setActiveImage(null)}
               className="rounded bg-white/10 p-2 text-white hover:bg-white/20 transition"
               aria-label="Close Lightbox"
@@ -2266,11 +2310,11 @@ const ChatWindow = () => {
               <X className="h-5 w-5" />
             </button>
           </div>
-          <img 
-            src={activeImage} 
-            alt="Fullscreen Preview" 
+          <img
+            src={activeImage}
+            alt="Fullscreen Preview"
             onClick={e => e.stopPropagation()}
-            className="max-h-[85vh] max-w-[90vw] object-contain rounded shadow-2xl" 
+            className="max-h-[85vh] max-w-[90vw] object-contain rounded shadow-2xl"
           />
         </div>
       )}
@@ -2322,7 +2366,7 @@ const ChatWindow = () => {
                       } else if (parsed.text) {
                         copyText = parsed.text;
                       }
-                    } catch(e) {}
+                    } catch (e) { }
                   }
                   navigator.clipboard.writeText(copyText);
                   addToast('Message copied to clipboard', 'success');
@@ -2423,7 +2467,7 @@ const ChatWindow = () => {
           </div>
         </div>
       )}
-      
+
       {/* 9. FORWARD MESSAGE MODAL OVERLAY */}
       {forwardingMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-white">
@@ -2471,7 +2515,7 @@ const ChatWindow = () => {
                     <div
                       key={room._id}
                       onClick={() => {
-                        setSelectedForwardRooms(prev => 
+                        setSelectedForwardRooms(prev =>
                           prev.includes(room._id) ? prev.filter(id => id !== room._id) : [...prev, room._id]
                         );
                       }}
@@ -2521,7 +2565,7 @@ const ChatWindow = () => {
       )}
 
 
-      
+
       <style>{`
         @keyframes dotbounce {
           0%, 100% { transform: translateY(0); }
