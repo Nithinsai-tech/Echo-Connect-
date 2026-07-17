@@ -141,7 +141,7 @@ const isEmojiOnly = (str) => {
 };
 
 // Memoized MessageItem Component for rendering performance
-const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser, searchQuery, isConsecutive, isContextMenuOpen }) => {
+const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, onImageClick, onReplySwipe, onReaction, starredMessages, currentUser, searchQuery, isConsecutive, isNextConsecutive, isContextMenuOpen }) => {
   const [touchStart, setTouchStart] = useState(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
 
@@ -334,13 +334,37 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
   }
 
   // Corner radius grouping class logic
-  const bubbleCornersClass = isSelf
-    ? isConsecutive
-      ? 'rounded-2xl rounded-tr-sm rounded-br-sm'
-      : 'rounded-2xl rounded-tr-sm'
-    : isConsecutive
-      ? 'rounded-2xl rounded-tl-sm rounded-bl-sm'
-      : 'rounded-2xl rounded-tl-sm';
+  let bubbleCornersClass = '';
+  if (isSelf) {
+    if (!isConsecutive && !isNextConsecutive) {
+      bubbleCornersClass = 'rounded-2xl rounded-tr-sm';
+    } else if (!isConsecutive && isNextConsecutive) {
+      bubbleCornersClass = 'rounded-2xl rounded-tr-sm rounded-br-2xl';
+    } else if (isConsecutive && isNextConsecutive) {
+      bubbleCornersClass = 'rounded-l-2xl rounded-r-md';
+    } else if (isConsecutive && !isNextConsecutive) {
+      bubbleCornersClass = 'rounded-2xl rounded-tr-2xl rounded-br-sm';
+    }
+  } else {
+    if (!isConsecutive && !isNextConsecutive) {
+      bubbleCornersClass = 'rounded-2xl rounded-tl-sm';
+    } else if (!isConsecutive && isNextConsecutive) {
+      bubbleCornersClass = 'rounded-2xl rounded-tl-sm rounded-bl-2xl';
+    } else if (isConsecutive && isNextConsecutive) {
+      bubbleCornersClass = 'rounded-r-2xl rounded-l-md';
+    } else if (isConsecutive && !isNextConsecutive) {
+      bubbleCornersClass = 'rounded-2xl rounded-tl-2xl rounded-bl-sm';
+    }
+  }
+
+  let groupClass = 'group-single';
+  if (!isConsecutive && isNextConsecutive) {
+    groupClass = 'group-start';
+  } else if (isConsecutive && isNextConsecutive) {
+    groupClass = 'group-middle';
+  } else if (isConsecutive && !isNextConsecutive) {
+    groupClass = 'group-end';
+  }
 
   const emojiCount = isEmojiOnly(contentText);
   const isEmojiMessage = !isDeleted && !callData && !msg.mediaUrl && !replyData && !forwardData && contentText && emojiCount !== null;
@@ -425,8 +449,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
         onTouchCancel={handleTouchCancel}
         style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
         data-message-id={msg._id}
-        className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
-          } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
+        className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${isConsecutive ? 'consecutive' : ''} relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'} ${groupClass}`}
       >
         {swipeOffset > 10 && (
           <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center text-orange-500 opacity-60">
@@ -522,8 +545,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       onTouchCancel={handleTouchCancel}
       style={{ transform: `translateX(${swipeOffset}px)`, maxWidth: '100%' }}
       data-message-id={msg._id}
-      className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${isConsecutive ? 'mt-0.5 mb-0.5' : 'mt-3 mb-1'
-        } relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'}`}
+      className={`flex w-full flex-col ${isSelf ? 'items-end' : 'items-start'} ${isConsecutive ? 'consecutive' : ''} relative group transition-all duration-100 msg-bubble-wrapper ${isSelf ? 'mine' : 'theirs'} ${groupClass}`}
     >
       {/* Swipe Indicator Background */}
       {swipeOffset > 10 && (
@@ -533,7 +555,7 @@ const MessageItem = memo(({ msg, isSelf, isGroup, isUnreadByMe, onContextMenu, o
       )}
 
       <div
-        className={`msg-bubble max-w-[74%] md:max-w-[60%] lg:max-w-[520px] px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 ${bubbleCornersClass} ${isImageOnly ? 'p-1.5' : ''
+        className={`msg-bubble px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] relative border border-transparent transition-all duration-200 ${bubbleCornersClass} ${isImageOnly ? 'p-1.5' : ''
           } ${isSelf
             ? 'bg-[var(--bubble-mine)] hover:bg-[#15803D] text-white'
             : 'bg-[var(--bubble-theirs)] border-[#E0E0EA] dark:border-[#2C3045] hover:bg-[#E5E5E5] dark:hover:bg-[#3E4E68] text-[var(--bubble-theirs-text,var(--text-primary))]'
@@ -1394,10 +1416,14 @@ const ChatWindow = () => {
     const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
     const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
 
+    const nextMsg = index < messages.length - 1 ? messages[index + 1] : null;
+    const isNextDateSeparator = nextMsg && (new Date(nextMsg.createdAt).toDateString() !== new Date(msg.createdAt).toDateString());
+    const isNextConsecutive = nextMsg && !isNextDateSeparator && isSameSender(msg, nextMsg);
+
     const isSelected = selectedMessageIds.includes(msg._id);
 
     return (
-      <div style={style} className="px-4 md:px-5">
+      <div style={style} className="px-3 md:px-4">
         {showDateSeparator && (
           <div className="flex justify-center my-2 mb-3">
             <span className="rounded border border-transparent dark:border-[#2C3045] bg-white/80 dark:bg-[#20253A] px-3 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-200 shadow-sm uppercase tracking-wide">
@@ -1438,6 +1464,7 @@ const ChatWindow = () => {
               currentUser={user}
               searchQuery={searchQuery}
               isConsecutive={isConsecutive}
+              isNextConsecutive={isNextConsecutive}
               isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
             />
           </div>
@@ -1725,10 +1752,10 @@ const ChatWindow = () => {
         />
 
         <main ref={containerRef} className="absolute inset-0 overflow-y-auto py-3 z-10 bg-transparent">
-          <div className="max-w-[960px] mx-auto w-full h-full flex flex-col relative">
+          <div className="max-w-[1200px] mx-auto w-full h-full flex flex-col relative">
             {loadingMessages && messages.length === 0 ? (
               /* SKELETON LOADER FOR MESSAGES LIST */
-              <div className="flex flex-col space-y-4 px-4 py-3 h-full justify-end w-full">
+              <div className="flex flex-col space-y-4 px-3 py-3 h-full justify-end w-full">
                 {[...Array(6)].map((_, i) => (
                   <div key={i} className={`flex w-full ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
                     <div className={`h-12 w-1/3 rounded-lg skeleton-shimmer ${i % 2 === 0 ? 'rounded-tr-none' : 'rounded-tl-none'}`} />
@@ -1755,7 +1782,7 @@ const ChatWindow = () => {
               </List>
             ) : (
               /* STANDARD SCROLL AREA FOR SMALLER MESSAGES LISTS */
-              <div className="px-4 md:px-5 w-full flex-1">
+              <div className="px-3 md:px-4 w-full flex-1">
                 {/* Pagination Load Button */}
                 {hasMoreMessages && (
                   <div className="flex justify-center pb-3">
@@ -1777,6 +1804,10 @@ const ChatWindow = () => {
                   const prevMsg = index > 0 ? messages[index - 1] : null;
                   const showDateSeparator = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
                   const isConsecutive = prevMsg && !showDateSeparator && isSameSender(prevMsg, msg);
+
+                  const nextMsg = index < messages.length - 1 ? messages[index + 1] : null;
+                  const isNextDateSeparator = nextMsg && (new Date(nextMsg.createdAt).toDateString() !== new Date(msg.createdAt).toDateString());
+                  const isNextConsecutive = nextMsg && !isNextDateSeparator && isSameSender(msg, nextMsg);
 
                   const isSelected = selectedMessageIds.includes(msg._id);
 
@@ -1822,6 +1853,7 @@ const ChatWindow = () => {
                             currentUser={user}
                             searchQuery={searchQuery}
                             isConsecutive={isConsecutive}
+                            isNextConsecutive={isNextConsecutive}
                             isContextMenuOpen={contextMenu.visible && contextMenu.messageId === msg._id}
                           />
                         </div>

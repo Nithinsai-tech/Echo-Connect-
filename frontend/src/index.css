@@ -647,8 +647,8 @@ body {
 }
 
 .msg-bubble-wrapper {
-  max-width: 65%;
-  margin-bottom: 4px;
+  width: 100% !important;
+  max-width: 100% !important;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -656,11 +656,21 @@ body {
 }
 
 .msg-bubble-wrapper.mine {
-  align-self: flex-end;
+  align-items: flex-end !important;
 }
 
 .msg-bubble-wrapper.theirs {
-  align-self: flex-start;
+  align-items: flex-start !important;
+}
+
+.msg-bubble-wrapper.consecutive {
+  margin-top: 1.5px !important;
+  margin-bottom: 0px !important;
+}
+
+.msg-bubble-wrapper:not(.consecutive) {
+  margin-top: 8px !important;
+  margin-bottom: 2px !important;
 }
 
 .msg-sender-name {
@@ -682,14 +692,41 @@ body {
 .msg-bubble-wrapper.mine .msg-bubble {
   background-color: var(--bubble-mine);
   color: white;
-  border-radius: 18px 18px 4px 18px;
 }
 
 .msg-bubble-wrapper.theirs .msg-bubble {
   background-color: var(--bubble-theirs);
   color: var(--bubble-theirs-text, var(--text-primary));
-  border-radius: 18px 18px 18px 4px;
   border: 1px solid var(--border);
+}
+
+/* Grouping Border Radii - Dynamic Spacing */
+.msg-bubble-wrapper.mine.group-single .msg-bubble {
+  border-radius: 18px 18px 4px 18px !important;
+}
+.msg-bubble-wrapper.theirs.group-single .msg-bubble {
+  border-radius: 18px 18px 18px 4px !important;
+}
+
+.msg-bubble-wrapper.mine.group-start .msg-bubble {
+  border-radius: 18px 18px 6px 18px !important;
+}
+.msg-bubble-wrapper.theirs.group-start .msg-bubble {
+  border-radius: 18px 18px 18px 6px !important;
+}
+
+.msg-bubble-wrapper.mine.group-middle .msg-bubble {
+  border-radius: 18px 6px 6px 18px !important;
+}
+.msg-bubble-wrapper.theirs.group-middle .msg-bubble {
+  border-radius: 6px 18px 18px 6px !important;
+}
+
+.msg-bubble-wrapper.mine.group-end .msg-bubble {
+  border-radius: 18px 18px 4px 18px !important;
+}
+.msg-bubble-wrapper.theirs.group-end .msg-bubble {
+  border-radius: 18px 18px 18px 4px !important;
 }
 
 .msg-footer {
@@ -1461,17 +1498,17 @@ html.high-contrast * {
 /* Responsive message bubble max-width constraints */
 @media (min-width: 1024px) {
   .msg-bubble {
-    max-width: 52% !important;
+    max-width: 72% !important;
   }
 }
 @media (min-width: 768px) and (max-width: 1023px) {
   .msg-bubble {
-    max-width: 65% !important;
+    max-width: 78% !important;
   }
 }
 @media (max-width: 767px) {
   .msg-bubble {
-    max-width: 85% !important;
+    max-width: 88% !important;
   }
 }
 
