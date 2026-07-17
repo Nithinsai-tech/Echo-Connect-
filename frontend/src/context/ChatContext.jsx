@@ -284,6 +284,13 @@ export const ChatProvider = ({ children }) => {
     return mapping[hex] || hex;
   };
 
+  const hexToRgb = (hex) => {
+    const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    const fullHex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(fullHex);
+    return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '255, 106, 0';
+  };
+
   // Apply personalization styles dynamically
   useEffect(() => {
     if (!user) return;
@@ -292,6 +299,8 @@ export const ChatProvider = ({ children }) => {
     // Accent Color
     root.style.setProperty('--orange', accentColor);
     root.style.setProperty('--orange-light', getHoverColor(accentColor));
+    root.style.setProperty('--orange-rgb', hexToRgb(accentColor));
+    root.style.setProperty('--orange-light-rgb', hexToRgb(getHoverColor(accentColor)));
 
     // Chat Bubble Color
     root.style.setProperty('--bubble-mine', chatBubbleColor);

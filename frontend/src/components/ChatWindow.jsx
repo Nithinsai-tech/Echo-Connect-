@@ -916,6 +916,29 @@ const ChatWindow = () => {
     }
   }, [activeRoom, wallpaperConfig]);
 
+  const [wallpaperLayout, setWallpaperLayout] = useState('landscape');
+  useEffect(() => {
+    if (displayedWallpaper?.type === 'image' && displayedWallpaper?.value) {
+      const img = new window.Image();
+      img.onload = () => {
+        const aspect = img.width / img.height;
+        if (aspect > 1.2) {
+          setWallpaperLayout('landscape');
+        } else if (aspect < 0.8) {
+          setWallpaperLayout('portrait');
+        } else {
+          setWallpaperLayout('square');
+        }
+      };
+      img.onerror = () => {
+        setWallpaperLayout('landscape');
+      };
+      img.src = displayedWallpaper.value;
+    } else {
+      setWallpaperLayout('solid');
+    }
+  }, [displayedWallpaper]);
+
   // Conversation Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1101,6 +1124,12 @@ const ChatWindow = () => {
       };
     }
   }, [contextMenu.visible]);
+
+  // Close context menus when active room changes
+  useEffect(() => {
+    closeContextMenu();
+    closeOptionsMenu();
+  }, [activeRoom]);
 
   // Virtualization List elements
   const listRef = useRef(null);
@@ -1739,17 +1768,49 @@ const ChatWindow = () => {
 
       <div className="flex-1 relative min-h-0 bg-[#0B0E17] overflow-hidden">
         {/* Dynamic Wallpaper Backdrop */}
-        <div
-          className="absolute inset-0 pointer-events-none transition-all duration-300 select-none z-0"
-          style={{
-            background: displayedWallpaper?.type === 'image' ? `url("${displayedWallpaper.value}")` : (displayedWallpaper?.value || 'var(--chat-bg-gradient)'),
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-            filter: displayedBlur > 0 ? `blur(${displayedBlur}px)` : 'none',
-            transform: displayedBlur > 0 ? 'scale(1.1)' : 'none', // scale prevents white edges during blur
-          }}
-        />
+        {displayedWallpaper?.type === 'image' ? (
+          <>
+            {/* Background cover layer: blurred and dimmed for portrait/square, clear for landscape */}
+            <div
+              className="absolute inset-0 pointer-events-none transition-all duration-300 select-none z-0"
+              style={{
+                backgroundImage: `url("${displayedWallpaper.value}")`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                filter: (wallpaperLayout === 'portrait' || wallpaperLayout === 'square')
+                  ? `blur(24px) brightness(0.4) ${displayedBlur > 0 ? `blur(${displayedBlur + 24}px)` : ''}`
+                  : (displayedBlur > 0 ? `blur(${displayedBlur}px)` : 'none'),
+                transform: (wallpaperLayout === 'portrait' || wallpaperLayout === 'square' || displayedBlur > 0) ? 'scale(1.15)' : 'none',
+                opacity: (wallpaperLayout === 'portrait' || wallpaperLayout === 'square') ? 0.75 : 1,
+              }}
+            />
+            {/* Centered foreground layer: fits naturally for portrait/square without distortion */}
+            {(wallpaperLayout === 'portrait' || wallpaperLayout === 'square') && (
+              <div
+                className="absolute inset-0 pointer-events-none transition-all duration-300 select-none z-0"
+                style={{
+                  backgroundImage: `url("${displayedWallpaper.value}")`,
+                  backgroundSize: 'contain',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                  filter: displayedBlur > 0 ? `blur(${displayedBlur}px)` : 'none',
+                  transform: displayedBlur > 0 ? 'scale(1.05)' : 'none',
+                }}
+              />
+            )}
+          </>
+        ) : (
+          /* Solid or Gradient Color Wallpaper */
+          <div
+            className="absolute inset-0 pointer-events-none transition-all duration-300 select-none z-0"
+            style={{
+              background: displayedWallpaper?.value || 'var(--chat-bg-gradient)',
+              filter: displayedBlur > 0 ? `blur(${displayedBlur}px)` : 'none',
+              transform: displayedBlur > 0 ? 'scale(1.08)' : 'none',
+            }}
+          />
+        )}
 
         <main ref={containerRef} className="absolute inset-0 overflow-y-auto py-3 z-10 bg-transparent">
           <div className="max-w-[1200px] mx-auto w-full h-full flex flex-col relative">

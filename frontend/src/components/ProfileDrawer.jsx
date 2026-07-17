@@ -109,6 +109,29 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
   const [tempBlur, setTempBlur] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(false);
 
+  const [previewWpLayout, setPreviewWpLayout] = useState('landscape');
+  useEffect(() => {
+    if (tempSelectedWp?.type === 'image' && tempSelectedWp?.value) {
+      const img = new window.Image();
+      img.onload = () => {
+        const aspect = img.width / img.height;
+        if (aspect > 1.2) {
+          setPreviewWpLayout('landscape');
+        } else if (aspect < 0.8) {
+          setPreviewWpLayout('portrait');
+        } else {
+          setPreviewWpLayout('square');
+        }
+      };
+      img.onerror = () => {
+        setPreviewWpLayout('landscape');
+      };
+      img.src = tempSelectedWp.value;
+    } else {
+      setPreviewWpLayout('solid');
+    }
+  }, [tempSelectedWp]);
+
   const [name, setName] = useState(user?.name || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [bio, setBio] = useState(localStorage.getItem(`bio_${user?._id}`) || 'Stay connected, instantly.');
@@ -814,17 +837,50 @@ const ProfileDrawer = ({ isOpen, onClose }) => {
             {/* Simulated Live Chat Container */}
             <div className="relative h-60 rounded-2xl overflow-hidden border border-[#2C3045] flex flex-col shadow-2xl shrink-0">
               {/* Live Wallpaper backdrop */}
-              <div
-                className="absolute inset-0 z-0 transition-all duration-300"
-                style={{
-                  background: tempSelectedWp?.type === 'image' ? `url(${tempSelectedWp.value})` : (tempSelectedWp?.value || 'var(--chat-bg-gradient)'),
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  filter: tempBlur > 0 ? `blur(${tempBlur / 3}px)` : 'none',
-                  transform: tempBlur > 0 ? 'scale(1.08)' : 'none'
-                }}
-              />
-              <div className="absolute inset-0 bg-black/15 z-1" />
+              {tempSelectedWp?.type === 'image' ? (
+                <>
+                  {/* Background cover layer: blurred and dimmed for portrait/square */}
+                  <div
+                    className="absolute inset-0 z-0 transition-all duration-300"
+                    style={{
+                      backgroundImage: `url(${tempSelectedWp.value})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'no-repeat',
+                      filter: (previewWpLayout === 'portrait' || previewWpLayout === 'square')
+                        ? `blur(12px) brightness(0.4) ${tempBlur > 0 ? `blur(${tempBlur / 3 + 12}px)` : ''}`
+                        : (tempBlur > 0 ? `blur(${tempBlur / 3}px)` : 'none'),
+                      transform: (previewWpLayout === 'portrait' || previewWpLayout === 'square' || tempBlur > 0) ? 'scale(1.15)' : 'none',
+                      opacity: (previewWpLayout === 'portrait' || previewWpLayout === 'square') ? 0.75 : 1,
+                    }}
+                  />
+                  {/* Centered foreground layer: fits naturally for portrait/square without distortion */}
+                  {(previewWpLayout === 'portrait' || previewWpLayout === 'square') && (
+                    <div
+                      className="absolute inset-0 z-0 transition-all duration-300"
+                      style={{
+                        backgroundImage: `url(${tempSelectedWp.value})`,
+                        backgroundSize: 'contain',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                        filter: tempBlur > 0 ? `blur(${tempBlur / 3}px)` : 'none',
+                        transform: tempBlur > 0 ? 'scale(1.05)' : 'none',
+                      }}
+                    />
+                  )}
+                </>
+              ) : (
+                /* Solid or Gradient Color Wallpaper */
+                <div
+                  className="absolute inset-0 z-0 transition-all duration-300"
+                  style={{
+                    background: tempSelectedWp?.value || 'var(--chat-bg-gradient)',
+                    filter: tempBlur > 0 ? `blur(${tempBlur / 3}px)` : 'none',
+                    transform: tempBlur > 0 ? 'scale(1.08)' : 'none',
+                  }}
+                />
+              )}
+              <div className="absolute inset-0 bg-black/15 z-[1]" />
 
               {/* Chat Header Overlay */}
               <div className="relative z-2 bg-[#1A1C28]/85 backdrop-blur-md px-3 py-2 flex items-center gap-2 border-b border-white/5 shrink-0">
